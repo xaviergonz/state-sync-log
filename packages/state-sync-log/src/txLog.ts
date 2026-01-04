@@ -8,6 +8,7 @@ import { Op } from "./operations"
 import { SortedTxEntry } from "./SortedTxEntry"
 import { isTransactionInCheckpoint } from "./StateCalculator"
 import { TxRecord } from "./TxRecord"
+import { EncodedTxRecord, encodeTxRecord } from "./TxRecordCompression"
 import { type TxTimestamp, type TxTimestampKey, txTimestampToKey } from "./txTimestamp"
 
 /**
@@ -28,7 +29,7 @@ export type TxKeyChanges = {
  */
 export function appendTx(
   ops: readonly Op[],
-  txMap: SyncLogMap<TxRecord>,
+  txMap: SyncLogMap<EncodedTxRecord>,
   activeEpoch: number,
   myClientId: string,
   clientState: ClientState,
@@ -49,9 +50,9 @@ export function appendTx(
   }
   const key = txTimestampToKey(ts)
 
-  // 3. Write to SyncLogMap (Atomic)
+  // 3. Write to SyncLogMap (Atomic) - encode the record for compact storage
   const record: TxRecord = { ops, originalTxKey: originalKey }
-  txMap.set(key, record)
+  txMap.set(key, encodeTxRecord(record))
 
   return key
 }
@@ -65,7 +66,7 @@ export function appendTx(
  * @returns true if any transactions were re-emitted or deleted, which may invalidate lastAppliedIndex
  */
 function syncLog(
-  txMap: SyncLogMap<TxRecord>,
+  txMap: SyncLogMap<EncodedTxRecord>,
   myClientId: string,
   clientState: ClientState,
   finalizedEpoch: number,
@@ -149,7 +150,7 @@ function syncLog(
  */
 export function updateState(
   doc: SyncLogDoc,
-  txMap: SyncLogMap<TxRecord>,
+  txMap: SyncLogMap<EncodedTxRecord>,
   checkpointMap: SyncLogMap<CheckpointRecord>,
   myClientId: string,
   clientState: ClientState,

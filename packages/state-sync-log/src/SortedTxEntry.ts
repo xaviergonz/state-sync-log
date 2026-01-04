@@ -1,6 +1,7 @@
 import { SyncLogMap } from "./crdt/SyncLogMap"
 import { failure } from "./error"
 import { TxRecord } from "./TxRecord"
+import { decodeTxRecord, EncodedTxRecord } from "./TxRecordCompression"
 import { parseTxTimestampKey, type TxTimestamp, type TxTimestampKey } from "./txTimestamp"
 
 /**
@@ -16,7 +17,7 @@ export class SortedTxEntry {
 
   constructor(
     readonly txTimestampKey: TxTimestampKey,
-    private readonly _txMap: SyncLogMap<TxRecord>
+    private readonly _txMap: SyncLogMap<EncodedTxRecord>
   ) {}
 
   /**
@@ -68,15 +69,16 @@ export class SortedTxEntry {
   }
 
   /**
-   * Gets the tx record, lazily fetching and caching on first access.
+   * Gets the tx record, lazily fetching, decoding, and caching on first access.
    * Returns undefined if the tx doesn't exist.
    */
   get txRecord(): TxRecord {
     if (!this._txRecord) {
-      this._txRecord = this._txMap.get(this.txTimestampKey)
-      if (!this._txRecord) {
+      const encoded = this._txMap.get(this.txTimestampKey)
+      if (!encoded) {
         failure(`SortedTxEntry: TxRecord not found for key ${this.txTimestampKey}`)
       }
+      this._txRecord = decodeTxRecord(encoded)
     }
     return this._txRecord
   }

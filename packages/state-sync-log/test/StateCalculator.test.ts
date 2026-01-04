@@ -5,7 +5,7 @@ import { SyncLogMap } from "../src/crdt/SyncLogMap"
 import { JSONValue } from "../src/json"
 import { Op } from "../src/operations"
 import { StateCalculator } from "../src/StateCalculator"
-import { TxRecord } from "../src/TxRecord"
+import { EncodedTxRecord, encodeTxRecord } from "../src/TxRecordCompression"
 import { TxTimestamp, txTimestampToKey } from "../src/txTimestamp"
 
 function createTxKey(epoch: number, clock: number, clientId: string): string {
@@ -19,12 +19,12 @@ function setOp(key: string, value: JSONValue): Op {
 
 describe("StateCalculator", () => {
   let doc: SyncLogDoc
-  let txMap: SyncLogMap<TxRecord>
+  let txMap: SyncLogMap<EncodedTxRecord>
   let calc: StateCalculator
 
   beforeEach(() => {
     doc = new SyncLogDoc()
-    txMap = doc.getMap<TxRecord>("tx")
+    txMap = doc.getMap<EncodedTxRecord>("tx")
     calc = new StateCalculator()
   })
 
@@ -34,9 +34,9 @@ describe("StateCalculator", () => {
       const k2 = createTxKey(1, 2, "c1")
       const k3 = createTxKey(1, 3, "c1")
 
-      txMap.set(k2, { ops: [setOp("b", 2)] })
-      txMap.set(k3, { ops: [setOp("c", 3)] })
-      txMap.set(k1, { ops: [setOp("a", 1)] })
+      txMap.set(k2, encodeTxRecord({ ops: [setOp("b", 2)] }))
+      txMap.set(k3, encodeTxRecord({ ops: [setOp("c", 3)] }))
+      txMap.set(k1, encodeTxRecord({ ops: [setOp("a", 1)] }))
 
       // Insert out of order
       calc.insertTx(k2, txMap)
@@ -50,7 +50,7 @@ describe("StateCalculator", () => {
 
     it("handles duplicates and maxSeenClock", () => {
       const k1 = createTxKey(1, 5, "c1")
-      txMap.set(k1, { ops: [setOp("a", 1)] })
+      txMap.set(k1, encodeTxRecord({ ops: [setOp("a", 1)] }))
 
       expect(calc.insertTx(k1, txMap)).toBe(false)
       expect(calc.insertTx(k1, txMap)).toBe(false) // Duplicate
@@ -60,8 +60,8 @@ describe("StateCalculator", () => {
     it("manages removal correctly", () => {
       const k1 = createTxKey(1, 1, "c1")
       const k2 = createTxKey(1, 2, "c1")
-      txMap.set(k1, { ops: [setOp("a", 1)] })
-      txMap.set(k2, { ops: [setOp("b", 2)] })
+      txMap.set(k1, encodeTxRecord({ ops: [setOp("a", 1)] }))
+      txMap.set(k2, encodeTxRecord({ ops: [setOp("b", 2)] }))
 
       calc.insertTx(k1, txMap)
       calc.insertTx(k2, txMap)
@@ -79,9 +79,9 @@ describe("StateCalculator", () => {
     const k3 = createTxKey(1, 3, "c1")
 
     beforeEach(() => {
-      txMap.set(k1, { ops: [setOp("a", 1)] })
-      txMap.set(k2, { ops: [setOp("b", 2)] })
-      txMap.set(k3, { ops: [setOp("c", 3)] })
+      txMap.set(k1, encodeTxRecord({ ops: [setOp("a", 1)] }))
+      txMap.set(k2, encodeTxRecord({ ops: [setOp("b", 2)] }))
+      txMap.set(k3, encodeTxRecord({ ops: [setOp("c", 3)] }))
     })
 
     it("invalidates on out-of-order insert (before calculated slice)", () => {
@@ -129,8 +129,8 @@ describe("StateCalculator", () => {
     it("calculates state cumulatively", () => {
       const k1 = createTxKey(1, 1, "c1")
       const k2 = createTxKey(1, 2, "c1")
-      txMap.set(k1, { ops: [setOp("a", 1)] })
-      txMap.set(k2, { ops: [setOp("b", 2)] })
+      txMap.set(k1, encodeTxRecord({ ops: [setOp("a", 1)] }))
+      txMap.set(k2, encodeTxRecord({ ops: [setOp("b", 2)] }))
 
       calc.insertTx(k1, txMap)
       calc.insertTx(k2, txMap)
@@ -143,7 +143,7 @@ describe("StateCalculator", () => {
     it("supports incremental updates", () => {
       const k1 = createTxKey(1, 1, "c1")
       const k2 = createTxKey(1, 2, "c1")
-      txMap.set(k1, { ops: [setOp("a", 1)] })
+      txMap.set(k1, encodeTxRecord({ ops: [setOp("a", 1)] }))
       calc.insertTx(k1, txMap)
 
       // Step 1
@@ -151,21 +151,21 @@ describe("StateCalculator", () => {
       expect(res.state).toEqual({ a: 1 })
 
       // Step 2: Add k2
-      txMap.set(k2, { ops: [setOp("b", 2)] })
+      txMap.set(k2, encodeTxRecord({ ops: [setOp("b", 2)] }))
       calc.insertTx(k2, txMap)
 
       expect(calc.needsFullRecalculation()).toBe(false)
       res = calc.calculateState()
       expect(res.state).toEqual({ a: 1, b: 2 })
-      expect(res.getAppliedOps()).toEqual(txMap.get(k2)?.ops) // Only new ops
+      expect(res.getAppliedOps()).toEqual([setOp("b", 2)]) // Only new ops
     })
 
     it("deduplicates re-emitted transactions", () => {
       const k1 = createTxKey(1, 1, "c1")
       const k1_re = createTxKey(2, 2, "c1") // Same logical tx, diff key
 
-      txMap.set(k1, { ops: [setOp("a", 1)] })
-      txMap.set(k1_re, { ops: [setOp("a", 1)], originalTxKey: k1 })
+      txMap.set(k1, encodeTxRecord({ ops: [setOp("a", 1)] }))
+      txMap.set(k1_re, encodeTxRecord({ ops: [setOp("a", 1)], originalTxKey: k1 }))
 
       calc.insertTx(k1, txMap)
       calc.insertTx(k1_re, txMap)
@@ -179,7 +179,7 @@ describe("StateCalculator", () => {
       calc = new StateCalculator(validate)
       const k1 = createTxKey(1, 1, "c1")
 
-      txMap.set(k1, { ops: [setOp("blocked", true)] })
+      txMap.set(k1, encodeTxRecord({ ops: [setOp("blocked", true)] }))
       calc.insertTx(k1, txMap)
 
       const { state } = calc.calculateState()
@@ -198,7 +198,7 @@ describe("StateCalculator", () => {
       calc.setBaseCheckpoint(cp)
 
       const k1 = createTxKey(1, 1, "c1")
-      txMap.set(k1, { ops: [setOp("new", true)] })
+      txMap.set(k1, encodeTxRecord({ ops: [setOp("new", true)] }))
       calc.insertTx(k1, txMap)
 
       const { state } = calc.calculateState()
@@ -219,8 +219,8 @@ describe("StateCalculator", () => {
       // k2 is NEW (clock 11 > 10)
       const k2 = createTxKey(1, 11, "c1")
 
-      txMap.set(k1, { ops: [setOp("b", 2)] })
-      txMap.set(k2, { ops: [setOp("c", 3)] })
+      txMap.set(k1, encodeTxRecord({ ops: [setOp("b", 2)] }))
+      txMap.set(k2, encodeTxRecord({ ops: [setOp("c", 3)] }))
 
       calc.insertTx(k1, txMap)
       calc.insertTx(k2, txMap)
@@ -231,7 +231,7 @@ describe("StateCalculator", () => {
 
     it("invalidates state when checkpoint changes", () => {
       const k1 = createTxKey(1, 1, "c1")
-      txMap.set(k1, { ops: [setOp("a", 1)] })
+      txMap.set(k1, encodeTxRecord({ ops: [setOp("a", 1)] }))
       calc.insertTx(k1, txMap)
       calc.calculateState()
 

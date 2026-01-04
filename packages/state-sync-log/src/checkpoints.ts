@@ -4,7 +4,7 @@ import { ClientState } from "./clientState"
 import { SyncLogMap } from "./crdt/SyncLogMap"
 import { failure } from "./error"
 import { JSONObject } from "./json"
-import { TxRecord } from "./TxRecord"
+import { EncodedTxRecord } from "./TxRecordCompression"
 import { TxTimestampKey } from "./txTimestamp"
 
 /**
@@ -77,7 +77,7 @@ export function parseCheckpointKey(key: CheckpointKey): CheckpointKeyData {
  * Called periodically (e.g. by a server or leader client) to finalize the epoch.
  */
 export function createCheckpoint(
-  txMap: SyncLogMap<TxRecord>,
+  txMap: SyncLogMap<EncodedTxRecord>,
   checkpointMap: SyncLogMap<CheckpointRecord>,
   clientState: ClientState,
   activeEpoch: number,
@@ -199,8 +199,8 @@ export function pruneCheckpoints(
         txCount > bestTxCount ||
         (txCount === bestTxCount && clientId < bestClientId)
       ) {
-      canonicalKey = key
-      bestTxCount = txCount
+        canonicalKey = key
+        bestTxCount = txCount
         bestClientId = clientId
       }
     }

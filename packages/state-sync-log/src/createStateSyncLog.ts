@@ -9,7 +9,7 @@ import { Op, ValidateFn } from "./operations"
 
 import { computeReconcileOps } from "./reconcile"
 import { SortedTxEntry } from "./SortedTxEntry"
-import { TxRecord } from "./TxRecord"
+import { EncodedTxRecord } from "./TxRecordCompression"
 import { appendTx, TxKeyChanges, updateState } from "./txLog"
 import { TxTimestampKey } from "./txTimestamp"
 import { generateID } from "./utils"
@@ -224,7 +224,7 @@ export function createStateSyncLog<State extends JSONObject>(
     failure(`clientId MUST NOT contain semicolons: ${clientId}`)
   }
 
-  const txMap = syncLogDoc.getMap<TxRecord>(txMapName)
+  const txMap = syncLogDoc.getMap<EncodedTxRecord>(txMapName)
   const checkpointMap = syncLogDoc.getMap<CheckpointRecord>(checkpointMapName)
 
   // Cast validate to basic type to match internal ClientState
@@ -243,7 +243,7 @@ export function createStateSyncLog<State extends JSONObject>(
   }
 
   // Helper to extract key changes from SyncLogMapEvent
-  const extractTxChanges = (event: SyncLogMapEvent<TxRecord>): TxKeyChanges => {
+  const extractTxChanges = (event: SyncLogMapEvent<EncodedTxRecord>): TxKeyChanges => {
     const added: TxTimestampKey[] = []
     const deleted: TxTimestampKey[] = []
 
@@ -317,7 +317,7 @@ export function createStateSyncLog<State extends JSONObject>(
   }
 
   // Tx observer
-  const txObserver = (event: SyncLogMapEvent<TxRecord>, _origin: unknown) => {
+  const txObserver = (event: SyncLogMapEvent<EncodedTxRecord>, _origin: unknown) => {
     const txChanges = extractTxChanges(event)
     runUpdate(txChanges, false)
   }

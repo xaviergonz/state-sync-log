@@ -6,6 +6,7 @@ import { Op, ValidateFn } from "./operations"
 import { computeReconcileOps } from "./reconcile"
 import { SortedTxEntry } from "./SortedTxEntry"
 import { TxRecord } from "./TxRecord"
+import { EncodedTxRecord } from "./TxRecordCompression"
 import { compareTxTimestamps, type TxTimestamp, type TxTimestampKey } from "./txTimestamp"
 import { lazy } from "./utils"
 
@@ -102,7 +103,7 @@ export class StateCalculator {
    * Clears all transactions and rebuilds from the tx map.
    * This is used when the checkpoint changes and we need a fresh start.
    */
-  rebuildFromSyncLogMap(txMap: SyncLogMap<TxRecord>): void {
+  rebuildFromSyncLogMap(txMap: SyncLogMap<EncodedTxRecord>): void {
     this.sortedTxs = []
     this.sortedTxsMap.clear()
     this.opsCountByEpoch.clear()
@@ -138,7 +139,7 @@ export class StateCalculator {
    *
    * @returns true if this caused invalidation (out-of-order insert)
    */
-  insertTx(key: TxTimestampKey, txMap: SyncLogMap<TxRecord>): boolean {
+  insertTx(key: TxTimestampKey, txMap: SyncLogMap<EncodedTxRecord>): boolean {
     if (this.sortedTxsMap.has(key)) {
       return false // Already exists
     }
