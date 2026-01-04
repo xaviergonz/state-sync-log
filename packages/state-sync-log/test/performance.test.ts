@@ -9,7 +9,11 @@ describe("Performance", () => {
 
   it(`measures performance of ${iterations} 10 array pushes`, () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     // Initialize array
     log.emit([{ kind: "set", path: [], key: "list", value: [] }])
@@ -35,7 +39,11 @@ describe("Performance", () => {
 
   it(`measures performance of ${iterations} 10 random updates on an object with 1000 keys`, () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     // Initialize with 1000 keys
     const initOps = []
@@ -73,7 +81,11 @@ describe("Performance", () => {
 
   it(`measures performance of ${iterations} 10 random updates with periodic compaction`, () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: 0 })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: 0,
+      autoCompact: () => false,
+    })
 
     const initOps = []
     for (let i = 0; i < 1000; i++) {

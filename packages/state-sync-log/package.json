@@ -1,14 +1,12 @@
 {
   "name": "state-sync-log",
   "version": "0.10.0",
-  "description": "Validated Replicated State Machine built on Yjs. Combine CRDT offline capabilities with strict business logic validation, state reconciliation, and audit trails.",
+  "description": "Validated Replicated State Machine built on a custom lightweight CRDT. Combine CRDT offline capabilities with strict business logic validation, state reconciliation, and audit trails.",
   "keywords": [
     "state-sync",
     "collaboration",
     "crdt",
     "log",
-    "yjs",
-    "yjs-middleware",
     "replicated-state-machine",
     "event-sourcing",
     "validation",
@@ -75,12 +73,10 @@
     "typedoc": "^0.28.15",
     "typescript": "^5.9.3",
     "vite": "^7.2.6",
-    "vite-plugin-dts": "^4.5.4",
-    "vitest": "^4.0.15",
-    "yjs": "^13.6.27"
+    "vite-plugin-dts": "^4.5.4"
   },
   "peerDependencies": {
-    "yjs": "^13.0.0"
+    "vitest": "^4.0.15"
   },
   "dependencies": {
     "fast-deep-equal": "^3.1.3",

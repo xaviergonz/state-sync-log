@@ -16,12 +16,14 @@ function createTwoClientSetup() {
     syncLogDoc: docA,
     clientId: "A",
     retentionWindowMs: undefined,
+    autoCompact: () => false,
   })
 
   const logB = createStateSyncLog<any>({
     syncLogDoc: docB,
     clientId: "B",
     retentionWindowMs: undefined,
+    autoCompact: () => false,
   })
 
   return { docA, docB, logA, logB }
@@ -344,6 +346,7 @@ describe("Two Client Sync", () => {
       syncLogDoc: docA,
       clientId: "A",
       retentionWindowMs: undefined,
+      autoCompact: () => false,
       validate,
     })
 
@@ -351,6 +354,7 @@ describe("Two Client Sync", () => {
       syncLogDoc: docB,
       clientId: "B",
       retentionWindowMs: undefined,
+      autoCompact: () => false,
       validate,
     })
 

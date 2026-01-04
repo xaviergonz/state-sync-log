@@ -15,8 +15,6 @@ export default defineConfig({
     minify: false,
 
     rollupOptions: {
-      external: ["yjs"],
-
       output: [
         {
           format: "esm",
@@ -25,9 +23,6 @@ export default defineConfig({
         {
           name: "state-sync-log",
           format: "umd",
-          globals: {
-            yjs: "Y",
-          },
         },
       ],
     },

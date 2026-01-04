@@ -20,6 +20,7 @@ describe("Retention Window", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: TWO_WEEKS_MS,
+      autoCompact: () => false,
     })
 
     // Create tx at time 0
@@ -47,6 +48,7 @@ describe("Retention Window", () => {
       syncLogDoc: doc,
       clientId: "A",
       retentionWindowMs: ONE_WEEK_MS,
+      autoCompact: () => false,
     })
 
     // A makes a change and COMPACTS (validating epoch 1, saving watermarks)
@@ -61,6 +63,7 @@ describe("Retention Window", () => {
       syncLogDoc: doc,
       clientId: "B",
       retentionWindowMs: ONE_WEEK_MS,
+      autoCompact: () => false,
     })
 
     // B makes a change
@@ -110,6 +113,7 @@ describe("Retention Window", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: ONE_WEEK_MS,
+      autoCompact: () => false,
     })
 
     // Create tx and compact
@@ -140,6 +144,7 @@ describe("Retention Window", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "ancient", value: 1 }])
@@ -164,12 +169,14 @@ describe("Retention Window", () => {
       syncLogDoc: docA,
       clientId: "A",
       retentionWindowMs: ONE_WEEK_MS,
+      autoCompact: () => false,
     })
 
     const logB = createStateSyncLog<any>({
       syncLogDoc: docB,
       clientId: "B",
       retentionWindowMs: ONE_WEEK_MS,
+      autoCompact: () => false,
     })
 
     // A makes changes
@@ -217,6 +224,7 @@ describe("Retention Window", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: SHORT_RETENTION,
+      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "t0", value: 0 }])

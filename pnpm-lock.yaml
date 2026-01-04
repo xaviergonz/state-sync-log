@@ -7,10 +7,6 @@ settings:
 importers:
 
   .:
-    dependencies:
-      yjs:
-        specifier: ^13.6.27
-        version: 13.6.28
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.3.8
@@ -45,6 +41,9 @@ importers:
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
+      vitest:
+        specifier: ^4.0.15
+        version: 4.0.16(@types/node@25.0.3)(yaml@2.8.2)
     devDependencies:
       '@types/node':
         specifier: ^25.0.3
@@ -73,12 +72,6 @@ importers:
       vite-plugin-dts:
         specifier: ^4.5.4
         version: 4.5.4(@types/node@25.0.3)(rollup@4.53.5)(typescript@5.9.3)(vite@7.3.0(@types/node@25.0.3)(yaml@2.8.2))
-      vitest:
-        specifier: ^4.0.15
-        version: 4.0.16(@types/node@25.0.3)(yaml@2.8.2)
-      yjs:
-        specifier: ^13.6.27
-        version: 13.6.28
 
 packages:
 
@@ -864,9 +857,6 @@ packages:
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
 
-  isomorphic.js@0.2.5:
-    resolution: {integrity: sha512-PIeMbHqMt4DnUP3MA/Flc0HElYjMXArsw1qwJZcm9sqR8mq3l8NYizFMty0pWwE/tzIGH3EKK5+jes5mAr85yw==}
-
   istanbul-lib-coverage@3.2.2:
     resolution: {integrity: sha512-O8dpsF+r0WV/8MNRKfnmrtCWhuKjxrq2w+jpzBL5UZKTi2LeVWnWOmWRxFlesJONmc+wLAGvKQZEOanko0LFTg==}
     engines: {node: '>=8'}
@@ -897,11 +887,6 @@ packages:
 
   kolorist@1.8.0:
     resolution: {integrity: sha512-Y+60/zizpJ3HRH8DCss+q95yr6145JXZo46OTpFvDZWLfRCE4qChOyk1b26nMaNpfHHgxagk9dXT5OP0Tfe+dQ==}
-
-  lib0@0.2.115:
-    resolution: {integrity: sha512-noaW4yNp6hCjOgDnWWxW0vGXE3kZQI5Kqiwz+jIWXavI9J9WyfJ9zjsbQlQlgjIbHBrvlA/x3TSIXBUJj+0L6g==}
-    engines: {node: '>=16'}
-    hasBin: true
 
   linkify-it@5.0.0:
     resolution: {integrity: sha512-5aHCbzQRADcdP+ATqnDuhhJ/MRIqDkZX5pyjFHRRysS8vZ5AbqGEoFIb6pYHPZ+L/OC2Lc+xT8uHVVR5CAK/wQ==}
@@ -1364,10 +1349,6 @@ packages:
     resolution: {integrity: sha512-mplynKqc1C2hTVYxd0PU2xQAc22TI1vShAYGksCCfxbn/dFwnHTNi1bvYsBTkhdUNtGIf5xNOg938rrSSYvS9A==}
     engines: {node: '>= 14.6'}
     hasBin: true
-
-  yjs@13.6.28:
-    resolution: {integrity: sha512-EgnDOXs8+hBVm6mq3/S89Kiwzh5JRbn7w2wXwbrMRyKy/8dOFsLvuIfC+x19ZdtaDc0tA9rQmdZzbqqNHG44wA==}
-    engines: {node: '>=16.0.0', npm: '>=8.0.0'}
 
   yn@3.1.1:
     resolution: {integrity: sha512-Ux4ygGWsu2c7isFWe8Yu1YluJmqVhxqK2cLXNQA5AcC3QfbGNpM7fu0Y8b/z16pXLnFxZYvWhd3fhBY9DLmC6Q==}
@@ -2068,8 +2049,6 @@ snapshots:
 
   isexe@2.0.0: {}
 
-  isomorphic.js@0.2.5: {}
-
   istanbul-lib-coverage@3.2.2: {}
 
   istanbul-lib-report@3.0.1:
@@ -2104,10 +2083,6 @@ snapshots:
       graceful-fs: 4.2.11
 
   kolorist@1.8.0: {}
-
-  lib0@0.2.115:
-    dependencies:
-      isomorphic.js: 0.2.5
 
   linkify-it@5.0.0:
     dependencies:
@@ -2523,9 +2498,5 @@ snapshots:
   yallist@4.0.0: {}
 
   yaml@2.8.2: {}
-
-  yjs@13.6.28:
-    dependencies:
-      lib0: 0.2.115
 
   yn@3.1.1: {}

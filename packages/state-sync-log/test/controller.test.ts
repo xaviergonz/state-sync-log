@@ -5,14 +5,22 @@ import { createStateSyncLog, getSortedTxsSymbol } from "../src/createStateSyncLo
 describe("Controller API", () => {
   it("initializes with empty state", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
     expect(log.getState()).toStrictEqual({})
     expect(log.isLogEmpty()).toBe(true)
   })
 
   it("subscribes to changes", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
     const spy = vi.fn()
     log.subscribe(spy)
 
@@ -26,7 +34,11 @@ describe("Controller API", () => {
 
   it("unsubscribe stops callback from firing", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
     const spy = vi.fn()
 
     const unsubscribe = log.subscribe(spy)
@@ -41,7 +53,11 @@ describe("Controller API", () => {
 
   it("multiple subscribers all receive updates", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     const spy1 = vi.fn()
     const spy2 = vi.fn()
@@ -60,7 +76,11 @@ describe("Controller API", () => {
 
   it("disposes correctly and stops firing subscriptions", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
     const spy = vi.fn()
 
     log.subscribe(spy)
@@ -88,7 +108,11 @@ describe("Controller API", () => {
 
   it("tracks getActiveEpochTxCount correctly", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     expect(log.getActiveEpochTxCount()).toBe(0)
 
@@ -98,7 +122,11 @@ describe("Controller API", () => {
 
   it("tracks getActiveEpochStartTime correctly", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     // Before any txs
     expect(log.getActiveEpochStartTime()).toBeUndefined()
@@ -117,7 +145,11 @@ describe("Controller API", () => {
 
   it("handles empty emit array", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
     const spy = vi.fn()
 
     log.subscribe(spy)
@@ -132,7 +164,11 @@ describe("Controller API", () => {
 
   it("getActiveEpoch returns current epoch number", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     expect(log.getActiveEpoch()).toBe(0)
 
@@ -144,7 +180,11 @@ describe("Controller API", () => {
 
   it("isLogEmpty returns true only when both tx and checkpoints are empty", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     expect(log.isLogEmpty()).toBe(true)
 
@@ -161,6 +201,7 @@ describe("Controller API", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
+      autoCompact: () => false,
       origin: customOrigin,
     })
 
@@ -180,6 +221,7 @@ describe("Controller API", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
+      autoCompact: () => false,
       origin: customOrigin,
     })
 
@@ -197,7 +239,11 @@ describe("Controller API", () => {
 
   it("origin is undefined when not provided", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     const updateSpy = vi.fn()
     doc.onUpdate(updateSpy)
@@ -219,11 +265,13 @@ describe("Controller API", () => {
     const logA = createStateSyncLog<any>({
       syncLogDoc: docA,
       retentionWindowMs: undefined,
+      autoCompact: () => false,
       origin: localOriginA,
     })
     const logB = createStateSyncLog<any>({
       syncLogDoc: docB,
       retentionWindowMs: undefined,
+      autoCompact: () => false,
       origin: localOriginB,
     })
 

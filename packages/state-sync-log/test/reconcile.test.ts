@@ -6,7 +6,11 @@ import { computeReconcileOps } from "../src/reconcile"
 describe("Reconcile", () => {
   it("reconciles state via diffs", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     log.reconcileState({ a: 1, b: 2 })
     expect(log.getState()).toStrictEqual({ a: 1, b: 2 })
@@ -17,7 +21,11 @@ describe("Reconcile", () => {
 
   it("reconciles deeply nested state correctly", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     const target = {
       level1: {
@@ -50,7 +58,11 @@ describe("Reconcile", () => {
 
   it("reconcile handles array shrinking", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     log.reconcileState({ arr: [1, 2, 3, 4, 5] })
     expect(log.getState().arr).toStrictEqual([1, 2, 3, 4, 5])
@@ -61,7 +73,11 @@ describe("Reconcile", () => {
 
   it("reconcile handles array growing", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     log.reconcileState({ arr: [1, 2] })
     expect(log.getState().arr).toStrictEqual([1, 2])
@@ -72,7 +88,11 @@ describe("Reconcile", () => {
 
   it("reconcile handles primitive value changes", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     log.reconcileState({ num: 1, str: "hello", bool: true, nil: null })
     expect(log.getState()).toStrictEqual({ num: 1, str: "hello", bool: true, nil: null })
@@ -83,7 +103,11 @@ describe("Reconcile", () => {
 
   it("reconcile handles key deletion", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     log.reconcileState({ a: 1, b: 2, c: 3 })
     expect(log.getState()).toStrictEqual({ a: 1, b: 2, c: 3 })
@@ -94,7 +118,11 @@ describe("Reconcile", () => {
 
   it("reconcile is idempotent", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
     const spy = vi.fn()
     log.subscribe(spy)
 
@@ -150,7 +178,11 @@ describe("Reconcile", () => {
 
     it("setting property to undefined preserves property in state", () => {
       const doc = new SyncLogDoc()
-      const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+      const log = createStateSyncLog<any>({
+        syncLogDoc: doc,
+        retentionWindowMs: undefined,
+        autoCompact: () => false,
+      })
 
       log.reconcileState({ a: 1, b: 2 })
       log.reconcileState({ a: 1, b: undefined })
@@ -163,7 +195,11 @@ describe("Reconcile", () => {
 
     it("deleting property removes it from state", () => {
       const doc = new SyncLogDoc()
-      const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+      const log = createStateSyncLog<any>({
+        syncLogDoc: doc,
+        retentionWindowMs: undefined,
+        autoCompact: () => false,
+      })
 
       log.reconcileState({ a: 1, b: undefined })
       expect("b" in log.getState()).toBe(true)
@@ -177,7 +213,11 @@ describe("Reconcile", () => {
 
     it("emit set operation with undefined value", () => {
       const doc = new SyncLogDoc()
-      const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+      const log = createStateSyncLog<any>({
+        syncLogDoc: doc,
+        retentionWindowMs: undefined,
+        autoCompact: () => false,
+      })
 
       log.reconcileState({ a: 1, b: 2 })
       log.emit([{ kind: "set", path: [], key: "b", value: undefined }])
@@ -189,7 +229,11 @@ describe("Reconcile", () => {
 
     it("emit set operation with array containing undefined", () => {
       const doc = new SyncLogDoc()
-      const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+      const log = createStateSyncLog<any>({
+        syncLogDoc: doc,
+        retentionWindowMs: undefined,
+        autoCompact: () => false,
+      })
 
       log.reconcileState({ arr: [1, 2, 3] })
       log.emit([{ kind: "set", path: [], key: "arr", value: [1, undefined, 3] }])
@@ -204,7 +248,11 @@ describe("Reconcile", () => {
 
     it("reconcile with array containing undefined", () => {
       const doc = new SyncLogDoc()
-      const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+      const log = createStateSyncLog<any>({
+        syncLogDoc: doc,
+        retentionWindowMs: undefined,
+        autoCompact: () => false,
+      })
 
       log.reconcileState({ data: { arr: [1, undefined, 3] } })
 

@@ -7,7 +7,11 @@ import { applyOps } from "../src/operations"
 describe("Checkpoints", () => {
   it("compacts epoch and maintains state", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     log.emit([{ kind: "set", path: [], key: "a", value: 1 }])
     const epoch1 = log.getActiveEpoch()
@@ -21,7 +25,11 @@ describe("Checkpoints", () => {
 
   it("multiple compact calls increment epochs correctly", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     const epoch0 = log.getActiveEpoch()
     expect(epoch0).toBe(0)
@@ -43,7 +51,11 @@ describe("Checkpoints", () => {
 
   it("preserves state after multiple compacts with no new txs", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     log.emit([{ kind: "set", path: [], key: "persistent", value: 42 }])
     log.compact()
@@ -60,6 +72,7 @@ describe("Checkpoints", () => {
       syncLogDoc: doc,
       clientId: "A",
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
 
     log1.emit([{ kind: "set", path: [], key: "data", value: { preserved: true } }])
@@ -69,6 +82,7 @@ describe("Checkpoints", () => {
       syncLogDoc: doc,
       clientId: "B",
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
 
     expect(log2.getState()).toStrictEqual({ data: { preserved: true } })
@@ -76,7 +90,11 @@ describe("Checkpoints", () => {
 
   it("compact does nothing when epoch is empty", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     expect(log.getActiveEpoch()).toBe(0)
 
@@ -87,7 +105,11 @@ describe("Checkpoints", () => {
 
   it("txs after compact are in new epoch", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     log.emit([{ kind: "set", path: [], key: "before", value: 1 }])
     log.compact()
@@ -113,6 +135,7 @@ describe("Checkpoints", () => {
       syncLogDoc: doc,
       clientId: "A",
       retentionWindowMs: 1000,
+      autoCompact: () => false,
     })
 
     // Access internal map for checkpoint verification (no public API for watermarks yet)
@@ -138,6 +161,7 @@ describe("Checkpoints", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
 
     // Create nested state
@@ -186,16 +210,19 @@ describe("Checkpoints", () => {
     const log1 = createStateSyncLog<any>({
       syncLogDoc: doc1,
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
 
     const log2 = createStateSyncLog<any>({
       syncLogDoc: doc2,
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
 
     const log3 = createStateSyncLog<any>({
       syncLogDoc: doc3,
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
 
     // Client 1 creates initial state with nested structures
@@ -239,7 +266,7 @@ describe("Checkpoints", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-
+      autoCompact: () => false,
       validate,
     })
 
@@ -284,14 +311,14 @@ describe("Checkpoints", () => {
     const log1 = createStateSyncLog<any>({
       syncLogDoc: doc1,
       retentionWindowMs: undefined,
-
+      autoCompact: () => false,
       validate,
     })
 
     const log2 = createStateSyncLog<any>({
       syncLogDoc: doc2,
       retentionWindowMs: undefined,
-
+      autoCompact: () => false,
       validate,
     })
 
@@ -309,7 +336,7 @@ describe("Checkpoints", () => {
 
     // Now create a tx on doc2 with a LOWER timestamp that would fail validation
     // when replayed (this simulates an out-of-order tx from another client)
-    // We'll directly create the tx in doc2's Yjs map with a timestamp that
+    // We'll directly create the tx in doc2's map with a timestamp that
     // comes before the existing txs, forcing slow path replay
 
     // First sync the valid tx
@@ -344,14 +371,14 @@ describe("Checkpoints", () => {
     const log1 = createStateSyncLog<any>({
       syncLogDoc: doc1,
       retentionWindowMs: undefined,
-
+      autoCompact: () => false,
       validate,
     })
 
     const log2 = createStateSyncLog<any>({
       syncLogDoc: doc2,
       retentionWindowMs: undefined,
-
+      autoCompact: () => false,
       validate,
     })
 
@@ -384,6 +411,7 @@ describe("Checkpoints", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
 
       // 1. Client A creates state and checkpoints it
@@ -401,6 +429,7 @@ describe("Checkpoints", () => {
         syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
 
       // Client B maintains a mutable state
@@ -441,6 +470,7 @@ describe("Checkpoints", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
 
       const docB = new SyncLogDoc()
@@ -448,6 +478,7 @@ describe("Checkpoints", () => {
         syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
 
       // 1. Client B has some initial state (epoch 0)

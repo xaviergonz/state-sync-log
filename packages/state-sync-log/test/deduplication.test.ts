@@ -10,6 +10,7 @@ describe("Deduplication Edge Cases", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
 
       // A creates a tx
@@ -34,11 +35,13 @@ describe("Deduplication Edge Cases", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
       const logB = createStateSyncLog<any>({
         syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
 
       // A creates T1 and compacts
@@ -65,11 +68,13 @@ describe("Deduplication Edge Cases", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
       const logB = createStateSyncLog<any>({
         syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
 
       // Both start with same base
@@ -102,16 +107,19 @@ describe("Deduplication Edge Cases", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
       const logB = createStateSyncLog<any>({
         syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
       const logC = createStateSyncLog<any>({
         syncLogDoc: docC,
         clientId: "C",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
 
       // All start with same base

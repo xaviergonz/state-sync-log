@@ -28,11 +28,13 @@ describe("Sync", () => {
       syncLogDoc: doc,
       clientId: "A",
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
     const log2 = createStateSyncLog<any>({
       syncLogDoc: doc,
       clientId: "B",
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
 
     log1.emit([{ kind: "set", path: [], key: "x", value: 1 }]) // Clock 1
@@ -45,7 +47,11 @@ describe("Sync", () => {
 
   it("maintains Lamport clock monotonicity with rapid emissions", () => {
     const doc = new SyncLogDoc()
-    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
+    const log = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      retentionWindowMs: undefined,
+      autoCompact: () => false,
+    })
 
     for (let i = 0; i < 10; i++) {
       log.emit([{ kind: "set", path: [], key: `key${i}`, value: i }])
@@ -63,6 +69,7 @@ describe("Sync", () => {
       syncLogDoc: doc,
       clientId: "A",
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
 
     log1.emit([{ kind: "set", path: [], key: "data", value: { preserved: true } }])
@@ -72,6 +79,7 @@ describe("Sync", () => {
       syncLogDoc: doc,
       clientId: "B",
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
 
     expect(log2.getState()).toStrictEqual({ data: { preserved: true } })
@@ -83,11 +91,13 @@ describe("Sync", () => {
       syncLogDoc: doc,
       clientId: "A",
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
     const log2 = createStateSyncLog<any>({
       syncLogDoc: doc,
       clientId: "B",
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
 
     log1.emit([{ kind: "set", path: [], key: "a", value: 1 }])
@@ -106,12 +116,14 @@ describe("Sync", () => {
       syncLogDoc: docA,
       clientId: "A",
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
 
     const logB = createStateSyncLog<any>({
       syncLogDoc: docB,
       clientId: "B",
       retentionWindowMs: undefined,
+      autoCompact: () => false,
     })
 
     // Step 1: Client A creates multiple ordered txs while offline
@@ -164,11 +176,13 @@ describe("Sync", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
       const logB = createStateSyncLog<any>({
         syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
 
       // 1. B creates checkpoint (Epoch 0 -> 1) early, so it misses A's future events.
@@ -198,6 +212,7 @@ describe("Sync", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
       logA.emit([{ kind: "set", path: [], key: "arr", value: [] }])
 
@@ -206,6 +221,7 @@ describe("Sync", () => {
         syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
 
       // Sync init state
@@ -245,11 +261,13 @@ describe("Sync", () => {
         syncLogDoc: doc,
         clientId: "A",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
       const log2 = createStateSyncLog<any>({
         syncLogDoc: doc,
         clientId: "B",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
 
       // Initial state
@@ -276,11 +294,13 @@ describe("Sync", () => {
         syncLogDoc: doc,
         clientId: "A",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
       const log2 = createStateSyncLog<any>({
         syncLogDoc: doc,
         clientId: "B",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
 
       // Initial state
@@ -307,11 +327,13 @@ describe("Sync", () => {
         syncLogDoc: doc,
         clientId: "A",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
       const log2 = createStateSyncLog<any>({
         syncLogDoc: doc,
         clientId: "B",
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
 
       // Setup
@@ -342,11 +364,13 @@ describe("Sync", () => {
         syncLogDoc: doc,
         clientId: "A",
         retentionWindowMs: 5000,
+        autoCompact: () => false,
       })
       const log2 = createStateSyncLog<any>({
         syncLogDoc: doc,
         clientId: "B",
         retentionWindowMs: 5000,
+        autoCompact: () => false,
       })
 
       // Setup
@@ -376,6 +400,7 @@ describe("Sync", () => {
         syncLogDoc: doc1,
         clientId: "A",
         retentionWindowMs: 5000,
+        autoCompact: () => false,
       })
 
       // Create state with set undefined and delete
@@ -395,6 +420,7 @@ describe("Sync", () => {
         syncLogDoc: doc2,
         clientId: "B",
         retentionWindowMs: 5000,
+        autoCompact: () => false,
       })
 
       const state2 = log2.getState()

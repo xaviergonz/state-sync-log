@@ -384,6 +384,7 @@ describe("Fuzzy Sync", () => {
         syncLogDoc: doc,
         clientId: clientIds[i],
         retentionWindowMs: undefined,
+        autoCompact: () => false,
       })
     )
 

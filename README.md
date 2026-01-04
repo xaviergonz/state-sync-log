@@ -143,6 +143,51 @@ Since this is an append-only log, you might worry about it growing forever. We s
 - **Retention Window:** Old transaction history is automatically pruned after a set time (recommended: 2 weeks).
 - **Result:** You get a full audit trail for recent history, without unboundedly growing storage.
 
+### Auto-Compaction
+
+By default, `state-sync-log` automatically compacts when:
+- **100+ transactions** OR **1000+ operations** in the current epoch
+- OR **5+ minutes** have passed since the last compaction (if there's something to compact)
+
+This default strategy (`defaultAutoCompact`) works well for most applications. You can customize it:
+
+```ts
+import { createStateSyncLog, SyncLogDoc, AutoCompactParams } from "state-sync-log"
+
+const log = createStateSyncLog<State>({
+  syncLogDoc: new SyncLogDoc(),
+  validate,
+  retentionWindowMs: 14 * 24 * 60 * 60 * 1000,
+
+  // Custom: Compact after 50 txs or 500 ops or 2 minutes
+  autoCompact: ({ txLog, lastCompactionTime }: AutoCompactParams) => {
+    if (txLog.size >= 50 || txLog.ops >= 500) return true
+    if (lastCompactionTime !== undefined && Date.now() - lastCompactionTime >= 2 * 60 * 1000) {
+      return txLog.size > 0
+    }
+    return false
+  }
+})
+```
+
+To disable auto-compaction entirely, pass `autoCompact: () => false`.
+
+**`AutoCompactParams`:**
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `txLog.size` | `number` | Number of transactions in the current epoch (since last checkpoint). |
+| `txLog.ops` | `number` | Total number of operations in the current epoch. |
+| `lastCompactionTime` | `number \| undefined` | Timestamp (Date.now()) of the last checkpoint, or undefined if none exists yet. |
+
+You can also monitor the current epoch's statistics programmatically:
+
+```ts
+const opsInEpoch = log.getActiveEpochOpsCount()
+const txsInEpoch = log.getActiveEpochTxCount()
+const lastCompactionTime = log.getLastCompactionTime()
+```
+
 ## Integration with MobX, Signals, etc
 
 You don't have to replace your existing state manager. `state-sync-log` is designed to drive them.
@@ -198,6 +243,7 @@ const log = createStateSyncLog<State>({
 | `validate` | `(state: State) => boolean` | Optional gatekeeper function. If it returns `false`, the transaction is dropped. |
 | `clientId` | `string` | Optional unique ID. Auto-generated if omitted. |
 | `retentionWindowMs` | `number` | **Required.** Time to keep transaction history before pruning (recommended: 2 weeks). Helps keep storage small. Use `undefined` to disable pruning. |
+| `autoCompact` | `(params: AutoCompactParams) => boolean` | Callback invoked after each update. If it returns `true`, `compact()` is called automatically. Defaults to `defaultAutoCompact`. Pass `() => false` to disable. See [Auto-Compaction](#auto-compaction). |
 
 ### `StateSyncLogController`
 

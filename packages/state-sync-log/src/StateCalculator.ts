@@ -67,6 +67,12 @@ export class StateCalculator {
   /** Validation function (optional) */
   private validateFn?: ValidateFn<JSONObject>
 
+  /** Ops count per epoch (incremented on insert, decremented on remove) */
+  private opsCountByEpoch: Map<number, number> = new Map()
+
+  /** Tx count per epoch (incremented on insert, decremented on remove) */
+  private txCountByEpoch: Map<number, number> = new Map()
+
   constructor(validateFn?: ValidateFn<JSONObject>) {
     this.validateFn = validateFn
   }
@@ -99,6 +105,8 @@ export class StateCalculator {
   rebuildFromSyncLogMap(txMap: SyncLogMap<TxRecord>): void {
     this.sortedTxs = []
     this.sortedTxsMap.clear()
+    this.opsCountByEpoch.clear()
+    this.txCountByEpoch.clear()
 
     // Collect all entries, build the map and max clock
     for (const key of txMap.keys()) {
@@ -109,6 +117,12 @@ export class StateCalculator {
       if (entry.txTimestamp.clock > this.maxSeenClock) {
         this.maxSeenClock = entry.txTimestamp.clock
       }
+
+      // Update per-epoch counts
+      const epoch = entry.txTimestamp.epoch
+      const opsCount = entry.txRecord.ops.length
+      this.opsCountByEpoch.set(epoch, (this.opsCountByEpoch.get(epoch) ?? 0) + opsCount)
+      this.txCountByEpoch.set(epoch, (this.txCountByEpoch.get(epoch) ?? 0) + 1)
     }
 
     // Sort once - O(n log n)
@@ -136,6 +150,12 @@ export class StateCalculator {
     if (ts.clock > this.maxSeenClock) {
       this.maxSeenClock = ts.clock
     }
+
+    // Update per-epoch counts
+    const epoch = ts.epoch
+    const opsCount = entry.txRecord.ops.length
+    this.opsCountByEpoch.set(epoch, (this.opsCountByEpoch.get(epoch) ?? 0) + opsCount)
+    this.txCountByEpoch.set(epoch, (this.txCountByEpoch.get(epoch) ?? 0) + 1)
 
     const sortedTxs = this.sortedTxs
 
@@ -181,6 +201,26 @@ export class StateCalculator {
     for (const key of keys) {
       const entry = this.sortedTxsMap.get(key)
       if (entry) {
+        // Decrement per-epoch counts before removing
+        const epoch = entry.txTimestamp.epoch
+        const opsCount = entry.txRecord.ops.length
+
+        const currentOps = this.opsCountByEpoch.get(epoch) ?? 0
+        const newOps = currentOps - opsCount
+        if (newOps <= 0) {
+          this.opsCountByEpoch.delete(epoch)
+        } else {
+          this.opsCountByEpoch.set(epoch, newOps)
+        }
+
+        const currentTxs = this.txCountByEpoch.get(epoch) ?? 0
+        const newTxs = currentTxs - 1
+        if (newTxs <= 0) {
+          this.txCountByEpoch.delete(epoch)
+        } else {
+          this.txCountByEpoch.set(epoch, newTxs)
+        }
+
         this.sortedTxsMap.delete(key)
         toDelete.add(key)
 
@@ -241,6 +281,20 @@ export class StateCalculator {
    */
   get txCount(): number {
     return this.sortedTxs.length
+  }
+
+  /**
+   * Gets the number of operations for a specific epoch.
+   */
+  getOpsCountForEpoch(epoch: number): number {
+    return this.opsCountByEpoch.get(epoch) ?? 0
+  }
+
+  /**
+   * Gets the number of transactions for a specific epoch.
+   */
+  getTxCountForEpoch(epoch: number): number {
+    return this.txCountByEpoch.get(epoch) ?? 0
   }
 
   /**
