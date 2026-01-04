@@ -19,7 +19,7 @@ export type SyncLogDocUpdateHandler = (update: EncodedUpdate, origin: unknown) =
  * Optimized for set-once keys with range-based tombstone compression.
  */
 export class SyncLogDoc {
-  private readonly _maps: Map<string, SyncLogMap> = new Map()
+  private readonly _maps: Map<string, SyncLogMap<any>> = new Map()
   private readonly _stores: Map<string, MapStore> = new Map()
   private readonly _updateHandlers: Set<SyncLogDocUpdateHandler> = new Set()
 
@@ -33,15 +33,16 @@ export class SyncLogDoc {
 
   /**
    * Gets or creates a named map.
+   * @typeParam T - The type of values stored in this map
    */
-  getMap(name: string): SyncLogMap {
+  getMap<T extends JSONValue = JSONValue>(name: string): SyncLogMap<T> {
     let map = this._maps.get(name)
     if (!map) {
       const store = this._getOrCreateStore(name)
-      map = new SyncLogMap(name, store, this)
+      map = new SyncLogMap<T>(name, store, this)
       this._maps.set(name, map)
     }
-    return map
+    return map as SyncLogMap<T>
   }
 
   /**

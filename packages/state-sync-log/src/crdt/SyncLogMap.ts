@@ -5,14 +5,17 @@ import { ActiveEntry, addToTombstones, isInTombstones, MapStore, parseKey } from
 /**
  * Observer callback for map changes.
  */
-export type SyncLogMapObserver = (event: SyncLogMapEvent, txOrigin: unknown) => void
+export type SyncLogMapObserver<T extends JSONValue = JSONValue> = (
+  event: SyncLogMapEvent<T>,
+  txOrigin: unknown
+) => void
 
 /**
  * Event emitted when map changes.
  */
-export interface SyncLogMapEvent {
+export interface SyncLogMapEvent<T extends JSONValue = JSONValue> {
   changes: {
-    keys: Map<string, { action: "add" | "delete"; oldValue?: JSONValue; newValue?: JSONValue }>
+    keys: Map<string, { action: "add" | "delete"; oldValue?: T; newValue?: T }>
   }
 }
 
@@ -36,12 +39,13 @@ interface SyncLogMapOwner {
 
 /**
  * A CRDT map optimized for set-once keys with range-based tombstone compression.
+ * @typeParam T - The type of values stored in this map (must be JSONValue-compatible)
  */
-export class SyncLogMap {
+export class SyncLogMap<T extends JSONValue = JSONValue> {
   private readonly _name: string
   private readonly _store: MapStore
   private readonly _owner: SyncLogMapOwner
-  private readonly _observers: Set<SyncLogMapObserver> = new Set()
+  private readonly _observers: Set<SyncLogMapObserver<T>> = new Set()
 
   constructor(name: string, store: MapStore, owner: SyncLogMapOwner) {
     this._name = name
@@ -52,16 +56,16 @@ export class SyncLogMap {
   /**
    * Gets the value for a key.
    */
-  get(key: string): JSONValue | undefined {
+  get(key: string): T | undefined {
     const entry = this._store.active.get(key)
-    return entry?.value
+    return entry?.value as T | undefined
   }
 
   /**
    * Sets a value for a key.
    * Throws if key already exists or doesn't match expected format.
    */
-  set(key: string, value: JSONValue): void {
+  set(key: string, value: T): void {
     const { clientId, seq } = parseKey(key)
 
     // Check if tombstoned
@@ -98,7 +102,7 @@ export class SyncLogMap {
     this._store.active.delete(key)
     addToTombstones(this._store.tombstones, entry.clientId, entry.seq)
 
-    this._notifyChange(key, { action: "delete", oldValue: entry.value })
+    this._notifyChange(key, { action: "delete", oldValue: entry.value as T })
     return true
   }
 
@@ -128,25 +132,25 @@ export class SyncLogMap {
   /**
    * Iterates over values.
    */
-  *values(): IterableIterator<JSONValue> {
+  *values(): IterableIterator<T> {
     for (const entry of this._store.active.values()) {
-      yield entry.value
+      yield entry.value as T
     }
   }
 
   /**
    * Iterates over entries.
    */
-  *entries(): IterableIterator<[string, JSONValue]> {
+  *entries(): IterableIterator<[string, T]> {
     for (const entry of this._store.active.values()) {
-      yield [entry.key, entry.value]
+      yield [entry.key, entry.value as T]
     }
   }
 
   /**
    * Default iterator.
    */
-  [Symbol.iterator](): IterableIterator<[string, JSONValue]> {
+  [Symbol.iterator](): IterableIterator<[string, T]> {
     return this.entries()
   }
 
@@ -154,7 +158,7 @@ export class SyncLogMap {
    * Subscribes to changes.
    * Returns a function to unsubscribe.
    */
-  observe(callback: SyncLogMapObserver): () => void {
+  observe(callback: SyncLogMapObserver<T>): () => void {
     this._observers.add(callback)
     return () => this._observers.delete(callback)
   }
@@ -164,7 +168,7 @@ export class SyncLogMap {
    */
   private _notifyChange(
     key: string,
-    change: { action: "add" | "delete"; oldValue?: JSONValue; newValue?: JSONValue }
+    change: { action: "add" | "delete"; oldValue?: T; newValue?: T }
   ): void {
     if (this._owner.isInTransaction()) {
       this._owner.queueMapChange(this._name, key, change)
@@ -180,7 +184,11 @@ export class SyncLogMap {
     changes: Map<string, { action: "add" | "delete"; oldValue?: JSONValue; newValue?: JSONValue }>
   ): void {
     if (changes.size === 0) return
-    const event: SyncLogMapEvent = { changes: { keys: changes } }
+    const event: SyncLogMapEvent<T> = {
+      changes: {
+        keys: changes as Map<string, { action: "add" | "delete"; oldValue?: T; newValue?: T }>,
+      },
+    }
     const origin = this._owner.getCurrentOrigin()
     for (const observer of this._observers) {
       observer(event, origin)
