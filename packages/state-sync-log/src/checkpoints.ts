@@ -189,12 +189,20 @@ export function pruneCheckpoints(
   // Find the canonical checkpoint and its key in one pass
   let canonicalKey: CheckpointKey | null = null
   let bestTxCount = -1
+  let bestClientId = ""
 
   for (const [key] of checkpointMap.entries()) {
-    const { epoch, txCount } = parseCheckpointKey(key)
-    if (epoch === finalizedEpoch && txCount > bestTxCount) {
+    const { epoch, txCount, clientId } = parseCheckpointKey(key)
+    if (epoch === finalizedEpoch) {
+      if (
+        canonicalKey === null ||
+        txCount > bestTxCount ||
+        (txCount === bestTxCount && clientId < bestClientId)
+      ) {
       canonicalKey = key
       bestTxCount = txCount
+        bestClientId = clientId
+      }
     }
   }
 
