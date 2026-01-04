@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest"
-import * as Y from "yjs"
 import { CheckpointRecord, parseCheckpointKey } from "../src/checkpoints"
+import { SyncLogDoc } from "../src/crdt/SyncLogDoc"
 import { createStateSyncLog, getSortedTxsSymbol } from "../src/createStateSyncLog"
 import { applyOps } from "../src/operations"
 
 describe("Checkpoints", () => {
   it("compacts epoch and maintains state", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "a", value: 1 }])
     const epoch1 = log.getActiveEpoch()
@@ -20,8 +20,8 @@ describe("Checkpoints", () => {
   })
 
   it("multiple compact calls increment epochs correctly", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     const epoch0 = log.getActiveEpoch()
     expect(epoch0).toBe(0)
@@ -42,8 +42,8 @@ describe("Checkpoints", () => {
   })
 
   it("preserves state after multiple compacts with no new txs", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "persistent", value: 42 }])
     log.compact()
@@ -55,20 +55,28 @@ describe("Checkpoints", () => {
   })
 
   it("new client loads checkpointed state", () => {
-    const doc = new Y.Doc()
-    const log1 = createStateSyncLog<any>({ yDoc: doc, clientId: "A", retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log1 = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      clientId: "A",
+      retentionWindowMs: undefined,
+    })
 
     log1.emit([{ kind: "set", path: [], key: "data", value: { preserved: true } }])
     log1.compact()
 
-    const log2 = createStateSyncLog<any>({ yDoc: doc, clientId: "B", retentionWindowMs: undefined })
+    const log2 = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      clientId: "B",
+      retentionWindowMs: undefined,
+    })
 
     expect(log2.getState()).toStrictEqual({ data: { preserved: true } })
   })
 
   it("compact does nothing when epoch is empty", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     expect(log.getActiveEpoch()).toBe(0)
 
@@ -78,8 +86,8 @@ describe("Checkpoints", () => {
   })
 
   it("txs after compact are in new epoch", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "before", value: 1 }])
     log.compact()
@@ -99,10 +107,10 @@ describe("Checkpoints", () => {
   })
 
   it("includes active txs in checkpoint", () => {
-    const doc = new Y.Doc()
+    const doc = new SyncLogDoc()
 
     const log = createStateSyncLog<any>({
-      yDoc: doc,
+      syncLogDoc: doc,
       clientId: "A",
       retentionWindowMs: 1000,
     })
@@ -126,9 +134,9 @@ describe("Checkpoints", () => {
   })
 
   it("preserves structural sharing after compaction", () => {
-    const doc = new Y.Doc()
+    const doc = new SyncLogDoc()
     const log = createStateSyncLog<any>({
-      yDoc: doc,
+      syncLogDoc: doc,
       retentionWindowMs: undefined,
     })
 
@@ -171,22 +179,22 @@ describe("Checkpoints", () => {
 
   it("maintains state correctness during out-of-order sync", () => {
     // Two clients syncing - need to create out-of-order arrival
-    const doc1 = new Y.Doc()
-    const doc2 = new Y.Doc()
-    const doc3 = new Y.Doc()
+    const doc1 = new SyncLogDoc()
+    const doc2 = new SyncLogDoc()
+    const doc3 = new SyncLogDoc()
 
     const log1 = createStateSyncLog<any>({
-      yDoc: doc1,
+      syncLogDoc: doc1,
       retentionWindowMs: undefined,
     })
 
     const log2 = createStateSyncLog<any>({
-      yDoc: doc2,
+      syncLogDoc: doc2,
       retentionWindowMs: undefined,
     })
 
     const log3 = createStateSyncLog<any>({
-      yDoc: doc3,
+      syncLogDoc: doc3,
       retentionWindowMs: undefined,
     })
 
@@ -200,13 +208,13 @@ describe("Checkpoints", () => {
     log2.emit([{ kind: "set", path: [], key: "from2", value: "hello" }])
 
     // Sync doc1 → doc3 first (doc3 sees client1's tx)
-    Y.applyUpdate(doc3, Y.encodeStateAsUpdate(doc1))
+    doc3.applyUpdate(doc1.encodeStateAsUpdate())
 
     const state3AfterDoc1 = log3.getState()
 
     // Now sync doc2 → doc3 (doc3 sees client2's tx which has EARLIER timestamp)
     // This triggers out-of-order replay because client2's tx should be sorted before client1's
-    Y.applyUpdate(doc3, Y.encodeStateAsUpdate(doc2))
+    doc3.applyUpdate(doc2.encodeStateAsUpdate())
 
     const state3AfterDoc2 = log3.getState()
 
@@ -223,13 +231,13 @@ describe("Checkpoints", () => {
   })
 
   it("preserves structural sharing fast path when validation fails", () => {
-    const doc = new Y.Doc()
+    const doc = new SyncLogDoc()
 
     // Use a validator that rejects any operation that sets "forbidden" key
     const validate = (state: any) => !("forbidden" in state)
 
     const log = createStateSyncLog<any>({
-      yDoc: doc,
+      syncLogDoc: doc,
       retentionWindowMs: undefined,
 
       validate,
@@ -267,21 +275,21 @@ describe("Checkpoints", () => {
 
   it("preserves structural sharing slow path when validation fails", () => {
     // Create two docs that will sync
-    const doc1 = new Y.Doc()
-    const doc2 = new Y.Doc()
+    const doc1 = new SyncLogDoc()
+    const doc2 = new SyncLogDoc()
 
     // Use a validator that rejects any operation that sets "forbidden" key
     const validate = (state: any) => !("forbidden" in state)
 
     const log1 = createStateSyncLog<any>({
-      yDoc: doc1,
+      syncLogDoc: doc1,
       retentionWindowMs: undefined,
 
       validate,
     })
 
     const log2 = createStateSyncLog<any>({
-      yDoc: doc2,
+      syncLogDoc: doc2,
       retentionWindowMs: undefined,
 
       validate,
@@ -294,7 +302,7 @@ describe("Checkpoints", () => {
     ])
 
     // Sync to doc2
-    Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc1))
+    doc2.applyUpdate(doc1.encodeStateAsUpdate())
 
     // Create another tx on doc1 that's valid
     log1.emit([{ kind: "set", path: ["nested"], key: "extra", value: "ok" }])
@@ -305,7 +313,7 @@ describe("Checkpoints", () => {
     // comes before the existing txs, forcing slow path replay
 
     // First sync the valid tx
-    Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc1))
+    doc2.applyUpdate(doc1.encodeStateAsUpdate())
 
     const stateAfterValidSync = log2.getState()
     expect(stateAfterValidSync.nested.extra).toBe("ok")
@@ -314,7 +322,7 @@ describe("Checkpoints", () => {
     log1.emit([{ kind: "set", path: [], key: "forbidden", value: "bad" }])
 
     // Sync to doc2 - this will go through slow path since it's from another client
-    Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc1))
+    doc2.applyUpdate(doc1.encodeStateAsUpdate())
 
     const stateAfterFailedSync = log2.getState()
 
@@ -327,21 +335,21 @@ describe("Checkpoints", () => {
   })
 
   it("preserves reference stability when all txs in slow path fail validation", () => {
-    const doc1 = new Y.Doc()
-    const doc2 = new Y.Doc()
+    const doc1 = new SyncLogDoc()
+    const doc2 = new SyncLogDoc()
 
     // Validator that rejects "forbidden" key
     const validate = (state: any) => !("forbidden" in state)
 
     const log1 = createStateSyncLog<any>({
-      yDoc: doc1,
+      syncLogDoc: doc1,
       retentionWindowMs: undefined,
 
       validate,
     })
 
     const log2 = createStateSyncLog<any>({
-      yDoc: doc2,
+      syncLogDoc: doc2,
       retentionWindowMs: undefined,
 
       validate,
@@ -349,7 +357,7 @@ describe("Checkpoints", () => {
 
     // Create initial state
     log1.emit([{ kind: "set", path: [], key: "value", value: 1 }])
-    Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc1))
+    doc2.applyUpdate(doc1.encodeStateAsUpdate())
 
     const stateBeforeFailedSync = log2.getState()
 
@@ -357,7 +365,7 @@ describe("Checkpoints", () => {
     log1.emit([{ kind: "set", path: [], key: "forbidden", value: "bad" }])
 
     // Sync to doc2
-    Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc1))
+    doc2.applyUpdate(doc1.encodeStateAsUpdate())
 
     const stateAfterFailedSync = log2.getState()
 
@@ -371,9 +379,9 @@ describe("Checkpoints", () => {
 
   describe("Subscribe Ops Reconciliation", () => {
     it("emits correct minimal ops to reconcile mutable state when syncing a checkpoint", () => {
-      const docA = new Y.Doc()
+      const docA = new SyncLogDoc()
       const logA = createStateSyncLog<any>({
-        yDoc: docA,
+        syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
       })
@@ -388,9 +396,9 @@ describe("Checkpoints", () => {
       expect(logA.getState()).toStrictEqual({ x: 1, y: 2 })
 
       // 2. Client B starts empty
-      const docB = new Y.Doc()
+      const docB = new SyncLogDoc()
       const logB = createStateSyncLog<any>({
-        yDoc: docB,
+        syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
       })
@@ -407,7 +415,7 @@ describe("Checkpoints", () => {
       expect(mutableState).toStrictEqual({})
 
       // 3. Sync A -> B (B receives the checkpoint)
-      Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA))
+      docB.applyUpdate(docA.encodeStateAsUpdate())
 
       // 4. Verify subscriber fired and ops correctly updated the mutable state
       expect(subscriber).toHaveBeenCalled()
@@ -428,16 +436,16 @@ describe("Checkpoints", () => {
     })
 
     it("emits correct minimal ops when checkpoint replaces existing state (conflict/reorg)", () => {
-      const docA = new Y.Doc()
+      const docA = new SyncLogDoc()
       const logA = createStateSyncLog<any>({
-        yDoc: docA,
+        syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
       })
 
-      const docB = new Y.Doc()
+      const docB = new SyncLogDoc()
       const logB = createStateSyncLog<any>({
-        yDoc: docB,
+        syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
       })
@@ -453,7 +461,7 @@ describe("Checkpoints", () => {
       logB.subscribe(subscriber)
 
       // 2. Sync B -> A so A knows about B's state (and will watermark it)
-      Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB))
+      docA.applyUpdate(docB.encodeStateAsUpdate())
 
       // 3. Client A overwrites the state and checkpoints it
       logA.emit([
@@ -463,7 +471,7 @@ describe("Checkpoints", () => {
       logA.compact()
 
       // 4. Sync A -> B (B accepts checkpoint)
-      Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA))
+      docB.applyUpdate(docA.encodeStateAsUpdate())
 
       // 5. Verify mutable state matches new reality
       expect(mutableState).toStrictEqual({

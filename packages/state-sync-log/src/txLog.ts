@@ -1,7 +1,8 @@
-import * as Y from "yjs"
 import { type CheckpointRecord, pruneCheckpoints } from "./checkpoints"
 import { getFinalizedEpochAndCheckpoint } from "./checkpointUtils"
 import { ClientState } from "./clientState"
+import { SyncLogDoc } from "./crdt/SyncLogDoc"
+import { SyncLogMap } from "./crdt/SyncLogMap"
 import { JSONObject } from "./json"
 import { Op } from "./operations"
 import { SortedTxEntry } from "./SortedTxEntry"
@@ -10,7 +11,7 @@ import { TxRecord } from "./TxRecord"
 import { type TxTimestamp, type TxTimestampKey, txTimestampToKey } from "./txTimestamp"
 
 /**
- * Changes to transaction keys from a Y.YMapEvent.
+ * Changes to transaction keys from a map event.
  * - added: keys that were added
  * - deleted: keys that were deleted
  */
@@ -27,7 +28,7 @@ export type TxKeyChanges = {
  */
 export function appendTx(
   ops: readonly Op[],
-  yTx: Y.Map<TxRecord>,
+  txMap: SyncLogMap<TxRecord>,
   activeEpoch: number,
   myClientId: string,
   clientState: ClientState,
@@ -48,9 +49,9 @@ export function appendTx(
   }
   const key = txTimestampToKey(ts)
 
-  // 3. Write to Yjs (Atomic)
+  // 3. Write to SyncLogMap (Atomic)
   const record: TxRecord = { ops, originalTxKey: originalKey }
-  yTx.set(key, record)
+  txMap.set(key, record)
 
   return key
 }
@@ -64,7 +65,7 @@ export function appendTx(
  * @returns true if any transactions were re-emitted or deleted, which may invalidate lastAppliedIndex
  */
 function syncLog(
-  yTx: Y.Map<TxRecord>,
+  txMap: SyncLogMap<TxRecord>,
   myClientId: string,
   clientState: ClientState,
   finalizedEpoch: number,
@@ -114,13 +115,13 @@ function syncLog(
   }
 
   const processKeyByTimestampKey = (txTimestampKey: TxTimestampKey): void => {
-    // Only process if it actually exists in Yjs Map
-    if (yTx.has(txTimestampKey)) {
-      processEntry(new SortedTxEntry(txTimestampKey, yTx))
+    // Only process if it actually exists in the map
+    if (txMap.has(txTimestampKey)) {
+      processEntry(new SortedTxEntry(txTimestampKey, txMap))
     }
   }
 
-  // 3. Scan NEW keys from Yjs to handle incoming transactions (sync)
+  // 3. Scan NEW keys to handle incoming transactions (sync)
   // Any client can re-emit - deduplication via originalTxKey handles duplicates.
   if (newKeys) {
     for (const key of newKeys) {
@@ -130,13 +131,13 @@ function syncLog(
 
   // 4. Re-emit missed transactions BEFORE pruning
   for (const { originalKey, tx } of toReEmit) {
-    const newKey = appendTx(tx.ops, yTx, activeEpoch, myClientId, clientState, originalKey)
-    calc.insertTx(newKey, yTx)
+    const newKey = appendTx(tx.ops, txMap, activeEpoch, myClientId, clientState, originalKey)
+    calc.insertTx(newKey, txMap)
   }
 
-  // 5. Prune old/finalized/redundant transactions from Yjs Map
+  // 5. Prune old/finalized/redundant transactions from map
   for (const key of toDelete) {
-    yTx.delete(key)
+    txMap.delete(key)
   }
   calc.removeTxs(toDelete)
 }
@@ -144,12 +145,12 @@ function syncLog(
 /**
  * The primary update function that maintains current state.
  *
- * @param txChanges - Changes from Y.YMapEvent. If undefined (first run), performs a full scan.
+ * @param txChanges - Changes from map event. If undefined (first run), performs a full scan.
  */
 export function updateState(
-  doc: Y.Doc,
-  yTx: Y.Map<TxRecord>,
-  yCheckpoint: Y.Map<CheckpointRecord>,
+  doc: SyncLogDoc,
+  txMap: SyncLogMap<TxRecord>,
+  checkpointMap: SyncLogMap<CheckpointRecord>,
   myClientId: string,
   clientState: ClientState,
   txChanges: TxKeyChanges | undefined
@@ -157,7 +158,7 @@ export function updateState(
   const calc = clientState.stateCalculator
 
   // Always calculate fresh finalized epoch and checkpoint to handle sync race conditions
-  const { finalizedEpoch, checkpoint: baseCP } = getFinalizedEpochAndCheckpoint(yCheckpoint)
+  const { finalizedEpoch, checkpoint: baseCP } = getFinalizedEpochAndCheckpoint(checkpointMap)
 
   // Update read-cache
   clientState.cachedFinalizedEpoch = finalizedEpoch
@@ -172,7 +173,7 @@ export function updateState(
 
   // Rebuild sorted cache before syncLog if needed
   if (needsRebuildSortedCache) {
-    calc.rebuildFromYjs(yTx)
+    calc.rebuildFromSyncLogMap(txMap)
   } else {
     // If not rebuilding, immediately process deletions to avoid "ghost" transactions
     // in syncLog (e.g. attempting to access a transaction that was just deleted).
@@ -181,10 +182,10 @@ export function updateState(
 
   // Sync and prune within transaction
   doc.transact(() => {
-    syncLog(yTx, myClientId, clientState, finalizedEpoch, baseCP, txChanges?.added)
+    syncLog(txMap, myClientId, clientState, finalizedEpoch, baseCP, txChanges?.added)
 
     // Safe to use local finalizedEpoch here
-    pruneCheckpoints(yCheckpoint, finalizedEpoch)
+    pruneCheckpoints(checkpointMap, finalizedEpoch)
   })
 
   if (needsRebuildSortedCache) {
@@ -198,9 +199,9 @@ export function updateState(
   // Update sorted cache with new keys from txChanges
   // This must happen after syncLog which may have deleted some of these keys
   for (const key of txChanges.added) {
-    // CRITICAL: Check yTx.has(key)! syncLog might have just pruned it.
-    if (yTx.has(key) && !calc.hasTx(key)) {
-      calc.insertTx(key, yTx)
+    // CRITICAL: Check txMap.has(key)! syncLog might have just pruned it.
+    if (txMap.has(key) && !calc.hasTx(key)) {
+      calc.insertTx(key, txMap)
     }
   }
 

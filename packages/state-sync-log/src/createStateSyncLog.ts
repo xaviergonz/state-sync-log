@@ -1,6 +1,7 @@
-import * as Y from "yjs"
 import { CheckpointRecord, createCheckpoint } from "./checkpoints"
 import { createClientState } from "./clientState"
+import { SyncLogDoc } from "./crdt/SyncLogDoc"
+import { SyncLogMapEvent } from "./crdt/SyncLogMap"
 import { failure } from "./error"
 import { JSONObject } from "./json"
 
@@ -17,21 +18,21 @@ export const getSortedTxsSymbol = Symbol("getSortedTxs")
 
 export interface StateSyncLogOptions<State extends JSONObject> {
   /**
-   * The Y.js Document to bind to.
+   * The SyncLogDoc to bind to.
    */
-  yDoc: Y.Doc
+  syncLogDoc: SyncLogDoc
 
   /**
-   * Name for the txs Y.Map.
+   * Name for the txs map.
    * Default: "state-sync-log-tx"
    */
-  yTxMapName?: string
+  txMapName?: string
 
   /**
-   * Name for the checkpoint Y.Map.
+   * Name for the checkpoint map.
    * Default: "state-sync-log-checkpoint"
    */
-  yCheckpointMapName?: string
+  checkpointMapName?: string
 
   /**
    * Unique identifier for this client.
@@ -40,11 +41,6 @@ export interface StateSyncLogOptions<State extends JSONObject> {
    * MUST NOT contain semicolons.
    */
   clientId?: string
-
-  /**
-   * Origin tag for Y.js txs created by this library.
-   */
-  yjsOrigin?: unknown
 
   /**
    * Optional validation function.
@@ -62,6 +58,12 @@ export interface StateSyncLogOptions<State extends JSONObject> {
    * Recommended: 14 days (1209600000 ms).
    */
   retentionWindowMs: number | undefined
+
+  /**
+   * Origin value passed to transact() calls.
+   * This is emitted with update events and can be used to identify the source of changes.
+   */
+  origin?: unknown
 }
 
 export interface StateSyncLogController<State extends JSONObject> {
@@ -130,21 +132,21 @@ export function createStateSyncLog<State extends JSONObject>(
   options: StateSyncLogOptions<State>
 ): StateSyncLogController<State> {
   const {
-    yDoc,
-    yTxMapName = "state-sync-log-tx",
-    yCheckpointMapName = "state-sync-log-checkpoint",
+    syncLogDoc,
+    txMapName = "state-sync-log-tx",
+    checkpointMapName = "state-sync-log-checkpoint",
     clientId = generateID(),
-    yjsOrigin,
     validate,
     retentionWindowMs,
+    origin,
   } = options
 
   if (clientId.includes(";")) {
     failure(`clientId MUST NOT contain semicolons: ${clientId}`)
   }
 
-  const yTx = yDoc.getMap<TxRecord>(yTxMapName)
-  const yCheckpoint = yDoc.getMap<CheckpointRecord>(yCheckpointMapName)
+  const txMap = syncLogDoc.getMap<TxRecord>(txMapName)
+  const checkpointMap = syncLogDoc.getMap<CheckpointRecord>(checkpointMapName)
 
   // Cast validate to basic type to match internal ClientState
   const clientState = createClientState(
@@ -161,8 +163,8 @@ export function createStateSyncLog<State extends JSONObject>(
     }
   }
 
-  // Helper to extract key changes from YMapEvent
-  const extractTxChanges = (event: Y.YMapEvent<TxRecord>): TxKeyChanges => {
+  // Helper to extract key changes from SyncLogMapEvent
+  const extractTxChanges = (event: SyncLogMapEvent<TxRecord>): TxKeyChanges => {
     const added: TxTimestampKey[] = []
     const deleted: TxTimestampKey[] = []
 
@@ -171,9 +173,6 @@ export function createStateSyncLog<State extends JSONObject>(
         added.push(key)
       } else if (change.action === "delete") {
         deleted.push(key)
-      } else if (change.action === "update") {
-        deleted.push(key)
-        added.push(key)
       }
     }
 
@@ -186,9 +185,9 @@ export function createStateSyncLog<State extends JSONObject>(
   // Update Logic with incremental changes
   const runUpdate = (txChanges: TxKeyChanges | undefined) => {
     const { state, getAppliedOps } = updateState(
-      yDoc,
-      yTx,
-      yCheckpoint,
+      syncLogDoc,
+      txMap,
+      checkpointMap,
       clientId,
       clientState,
       txChanges
@@ -197,21 +196,18 @@ export function createStateSyncLog<State extends JSONObject>(
   }
 
   // Tx observer
-  const txObserver = (event: Y.YMapEvent<TxRecord>, _transaction: Y.Transaction) => {
+  const txObserver = (event: SyncLogMapEvent<TxRecord>, _origin: unknown) => {
     const txChanges = extractTxChanges(event)
     runUpdate(txChanges)
   }
 
   // Checkpoint observer
-  const checkpointObserver = (
-    _event: Y.YMapEvent<CheckpointRecord>,
-    _transaction: Y.Transaction
-  ) => {
+  const checkpointObserver = (_event: SyncLogMapEvent<CheckpointRecord>, _origin: unknown) => {
     runUpdate(emptyTxChanges)
   }
 
-  yCheckpoint.observe(checkpointObserver)
-  yTx.observe(txObserver)
+  const disposeCheckpointObserver = checkpointMap.observe(checkpointObserver)
+  const disposeTxObserver = txMap.observe(txObserver)
 
   // Initial run (full recompute, treat as checkpoint change to initialize epoch cache)
   runUpdate(undefined)
@@ -248,10 +244,10 @@ export function createStateSyncLog<State extends JSONObject>(
 
     emit(ops: Op[]): void {
       assertNotDisposed()
-      yDoc.transact(() => {
+      syncLogDoc.transact(() => {
         const activeEpoch = getActiveEpochInternal()
-        appendTx(ops, yTx, activeEpoch, clientId, clientState)
-      }, yjsOrigin)
+        appendTx(ops, txMap, activeEpoch, clientId, clientState)
+      }, origin)
     },
 
     reconcileState(targetState: State): void {
@@ -265,18 +261,18 @@ export function createStateSyncLog<State extends JSONObject>(
 
     compact(): void {
       assertNotDisposed()
-      yDoc.transact(() => {
+      syncLogDoc.transact(() => {
         const activeEpoch = getActiveEpochInternal()
         const currentState = clientState.stateCalculator.getCachedState() ?? {}
-        createCheckpoint(yTx, yCheckpoint, clientState, activeEpoch, currentState, clientId)
-      }, yjsOrigin)
+        createCheckpoint(txMap, checkpointMap, clientState, activeEpoch, currentState, clientId)
+      }, origin)
     },
 
     dispose(): void {
       if (disposed) return // Already disposed, no-op
       disposed = true
-      yTx.unobserve(txObserver)
-      yCheckpoint.unobserve(checkpointObserver)
+      disposeTxObserver()
+      disposeCheckpointObserver()
       subscribers.clear()
     },
 
@@ -319,7 +315,7 @@ export function createStateSyncLog<State extends JSONObject>(
 
     isLogEmpty(): boolean {
       assertNotDisposed()
-      return yTx.size === 0 && yCheckpoint.size === 0
+      return txMap.size === 0 && checkpointMap.size === 0
     },
 
     [getSortedTxsSymbol](): readonly SortedTxEntry[] {

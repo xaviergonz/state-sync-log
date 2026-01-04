@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest"
-import * as Y from "yjs"
+import { SyncLogDoc } from "../src/crdt/SyncLogDoc"
 import { createStateSyncLog, getSortedTxsSymbol } from "../src/createStateSyncLog"
 
 describe("Sync", () => {
   it("syncs between two clients", async () => {
-    const doc = new Y.Doc()
-    const log1 = createStateSyncLog<any>({ yDoc: doc, clientId: "A", retentionWindowMs: undefined })
-    const log2 = createStateSyncLog<any>({ yDoc: doc, clientId: "B", retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log1 = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      clientId: "A",
+      retentionWindowMs: undefined,
+    })
+    const log2 = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      clientId: "B",
+      retentionWindowMs: undefined,
+    })
 
     log1.emit([{ kind: "set", path: [], key: "msg", value: "hello" }])
 
@@ -15,9 +23,17 @@ describe("Sync", () => {
   })
 
   it("handles out-of-order txs", () => {
-    const doc = new Y.Doc()
-    const log1 = createStateSyncLog<any>({ yDoc: doc, clientId: "A", retentionWindowMs: undefined })
-    const log2 = createStateSyncLog<any>({ yDoc: doc, clientId: "B", retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log1 = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      clientId: "A",
+      retentionWindowMs: undefined,
+    })
+    const log2 = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      clientId: "B",
+      retentionWindowMs: undefined,
+    })
 
     log1.emit([{ kind: "set", path: [], key: "x", value: 1 }]) // Clock 1
     log2.emit([{ kind: "set", path: [], key: "x", value: 2 }]) // Clock 2 (sees Clock 1)
@@ -28,8 +44,8 @@ describe("Sync", () => {
   })
 
   it("maintains Lamport clock monotonicity with rapid emissions", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     for (let i = 0; i < 10; i++) {
       log.emit([{ kind: "set", path: [], key: `key${i}`, value: i }])
@@ -42,21 +58,37 @@ describe("Sync", () => {
   })
 
   it("checkpoint state is preserved and loaded by new client", () => {
-    const doc = new Y.Doc()
-    const log1 = createStateSyncLog<any>({ yDoc: doc, clientId: "A", retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log1 = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      clientId: "A",
+      retentionWindowMs: undefined,
+    })
 
     log1.emit([{ kind: "set", path: [], key: "data", value: { preserved: true } }])
     log1.compact()
 
-    const log2 = createStateSyncLog<any>({ yDoc: doc, clientId: "B", retentionWindowMs: undefined })
+    const log2 = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      clientId: "B",
+      retentionWindowMs: undefined,
+    })
 
     expect(log2.getState()).toStrictEqual({ data: { preserved: true } })
   })
 
   it("both clients see same state after concurrent edits", () => {
-    const doc = new Y.Doc()
-    const log1 = createStateSyncLog<any>({ yDoc: doc, clientId: "A", retentionWindowMs: undefined })
-    const log2 = createStateSyncLog<any>({ yDoc: doc, clientId: "B", retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log1 = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      clientId: "A",
+      retentionWindowMs: undefined,
+    })
+    const log2 = createStateSyncLog<any>({
+      syncLogDoc: doc,
+      clientId: "B",
+      retentionWindowMs: undefined,
+    })
 
     log1.emit([{ kind: "set", path: [], key: "a", value: 1 }])
     log2.emit([{ kind: "set", path: [], key: "b", value: 2 }])
@@ -66,18 +98,18 @@ describe("Sync", () => {
   })
 
   it("re-emits missed txs in order after checkpoint sync", () => {
-    // Setup: Two isolated Y.Doc instances (simulating network separation)
-    const docA = new Y.Doc()
-    const docB = new Y.Doc()
+    // Setup: Two isolated SyncLogDoc instances (simulating network separation)
+    const docA = new SyncLogDoc()
+    const docB = new SyncLogDoc()
 
     const logA = createStateSyncLog<any>({
-      yDoc: docA,
+      syncLogDoc: docA,
       clientId: "A",
       retentionWindowMs: undefined,
     })
 
     const logB = createStateSyncLog<any>({
-      yDoc: docB,
+      syncLogDoc: docB,
       clientId: "B",
       retentionWindowMs: undefined,
     })
@@ -101,8 +133,8 @@ describe("Sync", () => {
 
     // Step 3: Sync B's state (with checkpoint) to A
     // A will receive the checkpoint and must re-emit its missed txs
-    const stateB = Y.encodeStateAsUpdate(docB)
-    Y.applyUpdate(docA, stateB)
+    const stateB = docB.encodeStateAsUpdate()
+    docA.applyUpdate(stateB)
 
     // Step 4: Verify A's state includes both:
     // - B's checkpoint content
@@ -116,8 +148,8 @@ describe("Sync", () => {
     expect(stateA.order).toStrictEqual([1, 2, 3])
 
     // Step 5: Now sync A back to B to complete convergence
-    const stateA2 = Y.encodeStateAsUpdate(docA)
-    Y.applyUpdate(docB, stateA2)
+    const stateA2 = docA.encodeStateAsUpdate()
+    docB.applyUpdate(stateA2)
 
     // Both should have identical state
     expect(logA.getState()).toStrictEqual(logB.getState())
@@ -126,15 +158,15 @@ describe("Sync", () => {
 
   describe("Advanced Sync Scenarios", () => {
     it("prunes redundant re-emits when switching to a better checkpoint", () => {
-      const docA = new Y.Doc()
-      const docB = new Y.Doc()
+      const docA = new SyncLogDoc()
+      const docB = new SyncLogDoc()
       const logA = createStateSyncLog<any>({
-        yDoc: docA,
+        syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
       })
       const logB = createStateSyncLog<any>({
-        yDoc: docB,
+        syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
       })
@@ -144,16 +176,16 @@ describe("Sync", () => {
       logB.compact()
 
       // Sync B's state (with checkpoint) to A first, so they have same base
-      const initSync = Y.encodeStateAsUpdate(docB)
-      Y.applyUpdate(docA, initSync)
+      const initSync = docB.encodeStateAsUpdate()
+      docA.applyUpdate(initSync)
 
       // 2. A emits T1 (now in Epoch 2 relative to A since it received B's checkpoint).
       logA.emit([{ kind: "set", path: [], key: "a", value: 1 }])
 
       // 3. Sync A -> B.
       // B receives T1.
-      const stateA = Y.encodeStateAsUpdate(docA)
-      Y.applyUpdate(docB, stateA)
+      const stateA = docA.encodeStateAsUpdate()
+      docB.applyUpdate(stateA)
 
       // Verification: Both should have the same state
       expect(logA.getState()).toStrictEqual(logB.getState())
@@ -161,24 +193,24 @@ describe("Sync", () => {
     })
 
     it("deduplicates re-emits correctly", () => {
-      const docA = new Y.Doc()
+      const docA = new SyncLogDoc()
       const logA = createStateSyncLog<any>({
-        yDoc: docA,
+        syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
       })
       logA.emit([{ kind: "set", path: [], key: "arr", value: [] }])
 
-      const docB = new Y.Doc()
+      const docB = new SyncLogDoc()
       const logB = createStateSyncLog<any>({
-        yDoc: docB,
+        syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
       })
 
       // Sync init state
-      const init = Y.encodeStateAsUpdate(docA)
-      Y.applyUpdate(docB, init)
+      const init = docA.encodeStateAsUpdate()
+      docB.applyUpdate(init)
 
       // A emits T1 (push 1)
       logA.emit([{ kind: "splice", path: ["arr"], index: 0, deleteCount: 0, inserts: [1] }])
@@ -189,16 +221,16 @@ describe("Sync", () => {
       // B receives T1.
       // T1 is from A and in a finalized epoch but NOT in B's checkpoint.
       // B keeps T1 to apply its state correctly.
-      const updateT1 = Y.encodeStateAsUpdate(docA)
-      Y.applyUpdate(docB, updateT1)
+      const updateT1 = docA.encodeStateAsUpdate()
+      docB.applyUpdate(updateT1)
 
       const txsB = logB[getSortedTxsSymbol]()
       // T1 is kept because it's not covered by B's checkpoint
       expect(txsB.length).toBe(1)
 
       // A receives B's state (just the checkpoint).
-      const updateB = Y.encodeStateAsUpdate(docB)
-      Y.applyUpdate(docA, updateB)
+      const updateB = docB.encodeStateAsUpdate()
+      docA.applyUpdate(updateB)
 
       // Both should have the same state
       expect(logA.getState()).toStrictEqual(logB.getState())
@@ -208,14 +240,14 @@ describe("Sync", () => {
 
   describe("set undefined vs delete sync", () => {
     it("syncs set undefined correctly between clients", () => {
-      const doc = new Y.Doc()
+      const doc = new SyncLogDoc()
       const log1 = createStateSyncLog<any>({
-        yDoc: doc,
+        syncLogDoc: doc,
         clientId: "A",
         retentionWindowMs: undefined,
       })
       const log2 = createStateSyncLog<any>({
-        yDoc: doc,
+        syncLogDoc: doc,
         clientId: "B",
         retentionWindowMs: undefined,
       })
@@ -239,14 +271,14 @@ describe("Sync", () => {
     })
 
     it("syncs delete correctly between clients", () => {
-      const doc = new Y.Doc()
+      const doc = new SyncLogDoc()
       const log1 = createStateSyncLog<any>({
-        yDoc: doc,
+        syncLogDoc: doc,
         clientId: "A",
         retentionWindowMs: undefined,
       })
       const log2 = createStateSyncLog<any>({
-        yDoc: doc,
+        syncLogDoc: doc,
         clientId: "B",
         retentionWindowMs: undefined,
       })
@@ -270,14 +302,14 @@ describe("Sync", () => {
     })
 
     it("preserves set undefined vs delete distinction after sync", () => {
-      const doc = new Y.Doc()
+      const doc = new SyncLogDoc()
       const log1 = createStateSyncLog<any>({
-        yDoc: doc,
+        syncLogDoc: doc,
         clientId: "A",
         retentionWindowMs: undefined,
       })
       const log2 = createStateSyncLog<any>({
-        yDoc: doc,
+        syncLogDoc: doc,
         clientId: "B",
         retentionWindowMs: undefined,
       })
@@ -305,14 +337,14 @@ describe("Sync", () => {
     })
 
     it("preserves distinction after checkpoint", () => {
-      const doc = new Y.Doc()
+      const doc = new SyncLogDoc()
       const log1 = createStateSyncLog<any>({
-        yDoc: doc,
+        syncLogDoc: doc,
         clientId: "A",
         retentionWindowMs: 5000,
       })
       const log2 = createStateSyncLog<any>({
-        yDoc: doc,
+        syncLogDoc: doc,
         clientId: "B",
         retentionWindowMs: 5000,
       })
@@ -339,9 +371,9 @@ describe("Sync", () => {
     })
 
     it("new client joining after checkpoint sees correct state", () => {
-      const doc1 = new Y.Doc()
+      const doc1 = new SyncLogDoc()
       const log1 = createStateSyncLog<any>({
-        yDoc: doc1,
+        syncLogDoc: doc1,
         clientId: "A",
         retentionWindowMs: 5000,
       })
@@ -356,11 +388,11 @@ describe("Sync", () => {
       log1.compact()
 
       // New client joins
-      const doc2 = new Y.Doc()
-      Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc1))
+      const doc2 = new SyncLogDoc()
+      doc2.applyUpdate(doc1.encodeStateAsUpdate())
 
       const log2 = createStateSyncLog<any>({
-        yDoc: doc2,
+        syncLogDoc: doc2,
         clientId: "B",
         retentionWindowMs: 5000,
       })

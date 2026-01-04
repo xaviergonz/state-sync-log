@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest"
-import * as Y from "yjs"
+import { SyncLogDoc } from "../src/crdt/SyncLogDoc"
 import { createStateSyncLog, getSortedTxsSymbol } from "../src/createStateSyncLog"
 
 describe("Deduplication Edge Cases", () => {
   describe("Checkpoint-based pruning", () => {
     it("txs are pruned after compact", () => {
-      const docA = new Y.Doc()
+      const docA = new SyncLogDoc()
       const logA = createStateSyncLog<any>({
-        yDoc: docA,
+        syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
       })
@@ -27,16 +27,16 @@ describe("Deduplication Edge Cases", () => {
     })
 
     it("txs in a received checkpoint are not duplicated", () => {
-      const docA = new Y.Doc()
-      const docB = new Y.Doc()
+      const docA = new SyncLogDoc()
+      const docB = new SyncLogDoc()
 
       const logA = createStateSyncLog<any>({
-        yDoc: docA,
+        syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
       })
       const logB = createStateSyncLog<any>({
-        yDoc: docB,
+        syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
       })
@@ -46,7 +46,7 @@ describe("Deduplication Edge Cases", () => {
       logA.compact()
 
       // Sync A to B (B receives checkpoint)
-      Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA))
+      docB.applyUpdate(docA.encodeStateAsUpdate())
 
       // B should have the correct state
       expect(logB.getState().val).toBe(1)
@@ -58,23 +58,23 @@ describe("Deduplication Edge Cases", () => {
 
   describe("Re-emit deduplication", () => {
     it("re-emitted txs are not applied twice", () => {
-      const docA = new Y.Doc()
-      const docB = new Y.Doc()
+      const docA = new SyncLogDoc()
+      const docB = new SyncLogDoc()
 
       const logA = createStateSyncLog<any>({
-        yDoc: docA,
+        syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
       })
       const logB = createStateSyncLog<any>({
-        yDoc: docB,
+        syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
       })
 
       // Both start with same base
       logA.emit([{ kind: "set", path: [], key: "arr", value: [] }])
-      Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA))
+      docB.applyUpdate(docA.encodeStateAsUpdate())
 
       // A emits a splice (adds element to array)
       logA.emit([{ kind: "splice", path: ["arr"], index: 0, deleteCount: 0, inserts: [1] }])
@@ -83,41 +83,41 @@ describe("Deduplication Edge Cases", () => {
       logB.compact()
 
       // Sync A to B - B receives T1, re-emits it
-      Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA))
+      docB.applyUpdate(docA.encodeStateAsUpdate())
       expect(logB.getState().arr).toStrictEqual([1])
 
       // Sync B back to A - A receives the re-emit
-      Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB))
+      docA.applyUpdate(docB.encodeStateAsUpdate())
 
       // A should still have [1], NOT [1, 1]
       expect(logA.getState().arr).toStrictEqual([1])
     })
 
     it("original and re-emit arriving at third client are deduplicated", () => {
-      const docA = new Y.Doc()
-      const docB = new Y.Doc()
-      const docC = new Y.Doc()
+      const docA = new SyncLogDoc()
+      const docB = new SyncLogDoc()
+      const docC = new SyncLogDoc()
 
       const logA = createStateSyncLog<any>({
-        yDoc: docA,
+        syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
       })
       const logB = createStateSyncLog<any>({
-        yDoc: docB,
+        syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
       })
       const logC = createStateSyncLog<any>({
-        yDoc: docC,
+        syncLogDoc: docC,
         clientId: "C",
         retentionWindowMs: undefined,
       })
 
       // All start with same base
       logA.emit([{ kind: "set", path: [], key: "arr", value: [] }])
-      Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA))
-      Y.applyUpdate(docC, Y.encodeStateAsUpdate(docA))
+      docB.applyUpdate(docA.encodeStateAsUpdate())
+      docC.applyUpdate(docA.encodeStateAsUpdate())
 
       // A emits T1 (push 1)
       logA.emit([{ kind: "splice", path: ["arr"], index: 0, deleteCount: 0, inserts: [1] }])
@@ -126,11 +126,11 @@ describe("Deduplication Edge Cases", () => {
       logB.compact()
 
       // B receives T1 from A, re-emits as T1'
-      Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA))
+      docB.applyUpdate(docA.encodeStateAsUpdate())
 
       // C receives BOTH T1 from A and T1' from B
-      Y.applyUpdate(docC, Y.encodeStateAsUpdate(docA))
-      Y.applyUpdate(docC, Y.encodeStateAsUpdate(docB))
+      docC.applyUpdate(docA.encodeStateAsUpdate())
+      docC.applyUpdate(docB.encodeStateAsUpdate())
 
       // C should have [1], NOT [1, 1]
       expect(logC.getState().arr).toStrictEqual([1])

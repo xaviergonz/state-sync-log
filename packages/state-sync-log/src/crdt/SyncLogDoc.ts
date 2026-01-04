@@ -7,7 +7,7 @@ import {
   MapStore,
   StateVector,
 } from "./SyncLogEncoding"
-import { SyncLogMap } from "./SyncLogMap"
+import { SyncLogMap, SyncLogMapChange } from "./SyncLogMap"
 
 /**
  * Update event callback.
@@ -26,16 +26,13 @@ export class SyncLogDoc {
   // Transaction state
   private _inTransaction = false
   private _currentOrigin: unknown = undefined
-  private _pendingChanges: Map<
-    string,
-    Map<string, { action: "add" | "delete"; oldValue?: JSONValue; newValue?: JSONValue }>
-  > = new Map()
+  private _pendingChanges: Map<string, Map<string, SyncLogMapChange<JSONValue>>> = new Map()
 
   /**
    * Gets or creates a named map.
    * @typeParam T - The type of values stored in this map
    */
-  getMap<T extends JSONValue = JSONValue>(name: string): SyncLogMap<T> {
+  getMap<T>(name: string): SyncLogMap<T> {
     let map = this._maps.get(name)
     if (!map) {
       const store = this._getOrCreateStore(name)
@@ -85,11 +82,15 @@ export class SyncLogDoc {
     this.transact(() => {
       const allChanges = decodeAndApplyUpdate(update, (name) => this._getOrCreateStore(name))
 
-      // Emit events for each map
+      // Emit events for each map and queue changes for doc-level update
       for (const [mapName, changes] of allChanges) {
         const map = this._maps.get(mapName)
         if (map) {
           map._emitEvent(changes)
+        }
+        // Also queue changes for doc-level onUpdate handlers
+        for (const [key, change] of changes) {
+          this.queueMapChange(mapName, key, change)
         }
       }
     }, txOrigin)
@@ -166,11 +167,7 @@ export class SyncLogDoc {
     return this._inTransaction
   }
 
-  queueMapChange(
-    mapName: string,
-    key: string,
-    change: { action: "add" | "delete"; oldValue?: JSONValue; newValue?: JSONValue }
-  ): void {
+  queueMapChange(mapName: string, key: string, change: SyncLogMapChange<JSONValue>): void {
     let mapChanges = this._pendingChanges.get(mapName)
     if (!mapChanges) {
       mapChanges = new Map()
@@ -183,11 +180,7 @@ export class SyncLogDoc {
     return this._currentOrigin
   }
 
-  emitSingleChange(
-    mapName: string,
-    key: string,
-    change: { action: "add" | "delete"; oldValue?: JSONValue; newValue?: JSONValue }
-  ): void {
+  emitSingleChange(mapName: string, key: string, change: SyncLogMapChange<JSONValue>): void {
     // Emit map observer event
     const map = this._maps.get(mapName)
     if (map) {
@@ -197,7 +190,7 @@ export class SyncLogDoc {
     // Emit document update event with just this change (delta)
     if (this._updateHandlers.size > 0) {
       const update: EncodedUpdate =
-        change.action === "add" && change.newValue !== undefined
+        change.action === "add"
           ? { [mapName]: { a: [{ k: key, v: change.newValue }], t: {} } }
           : { [mapName]: { a: [], t: {} } } // Delete case - tombstone already in store
       for (const handler of this._updateHandlers) {
@@ -235,7 +228,7 @@ export class SyncLogDoc {
       for (const [mapName, changes] of this._pendingChanges) {
         const active: Array<{ k: string; v: JSONValue }> = []
         for (const [key, change] of changes) {
-          if (change.action === "add" && change.newValue !== undefined) {
+          if (change.action === "add") {
             active.push({ k: key, v: change.newValue })
           }
         }

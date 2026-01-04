@@ -1,7 +1,7 @@
-import * as Y from "yjs"
 import { ClientId } from "./ClientId"
 import { getFinalizedEpochAndCheckpoint } from "./checkpointUtils"
 import { ClientState } from "./clientState"
+import { SyncLogMap } from "./crdt/SyncLogMap"
 import { failure } from "./error"
 import { JSONObject } from "./json"
 import { TxRecord } from "./TxRecord"
@@ -77,15 +77,15 @@ export function parseCheckpointKey(key: CheckpointKey): CheckpointKeyData {
  * Called periodically (e.g. by a server or leader client) to finalize the epoch.
  */
 export function createCheckpoint(
-  yTx: Y.Map<TxRecord>,
-  yCheckpoint: Y.Map<CheckpointRecord>,
+  txMap: SyncLogMap<TxRecord>,
+  checkpointMap: SyncLogMap<CheckpointRecord>,
   clientState: ClientState,
   activeEpoch: number,
   currentState: JSONObject,
   myClientId: string
 ): void {
   // 1. Start with previous watermarks (from finalized epoch = activeEpoch - 1)
-  const { checkpoint: prevCP } = getFinalizedEpochAndCheckpoint(yCheckpoint)
+  const { checkpoint: prevCP } = getFinalizedEpochAndCheckpoint(checkpointMap)
   const newWatermarks = prevCP ? { ...prevCP.watermarks } : {}
 
   // Get active txs using cached sorted order (filter by epoch)
@@ -154,7 +154,7 @@ export function createCheckpoint(
     txCount,
     clientId: myClientId,
   })
-  yCheckpoint.set(cpKey, {
+  checkpointMap.set(cpKey, {
     state: currentState, // Responsibility for cloning is moved to the caller if needed
     watermarks: newWatermarks,
     txCount,
@@ -166,7 +166,7 @@ export function createCheckpoint(
   // This reduces memory pressure instead of waiting for cleanupLog
   const keysToDelete: TxTimestampKey[] = []
   for (const entry of activeTxs) {
-    yTx.delete(entry.txTimestampKey)
+    txMap.delete(entry.txTimestampKey)
     keysToDelete.push(entry.txTimestampKey)
   }
   clientState.stateCalculator.removeTxs(keysToDelete)
@@ -174,7 +174,7 @@ export function createCheckpoint(
 
 /**
  * Garbage collects old checkpoints.
- * Should be called periodically to prevent unbounded growth of yCheckpoint.
+ * Should be called periodically to prevent unbounded growth of checkpointMap.
  *
  * Keeps only the canonical checkpoint for the finalized epoch.
  * Everything else is deleted (old epochs + non-canonical).
@@ -183,14 +183,14 @@ export function createCheckpoint(
  * for an epoch immediately makes it finalized.
  */
 export function pruneCheckpoints(
-  yCheckpoint: Y.Map<CheckpointRecord>,
+  checkpointMap: SyncLogMap<CheckpointRecord>,
   finalizedEpoch: number
 ): void {
   // Find the canonical checkpoint and its key in one pass
   let canonicalKey: CheckpointKey | null = null
   let bestTxCount = -1
 
-  for (const [key] of yCheckpoint.entries()) {
+  for (const [key] of checkpointMap.entries()) {
     const { epoch, txCount } = parseCheckpointKey(key)
     if (epoch === finalizedEpoch && txCount > bestTxCount) {
       canonicalKey = key
@@ -199,9 +199,9 @@ export function pruneCheckpoints(
   }
 
   // Delete everything except the canonical checkpoint
-  for (const key of yCheckpoint.keys()) {
+  for (const key of checkpointMap.keys()) {
     if (key !== canonicalKey) {
-      yCheckpoint.delete(key)
+      checkpointMap.delete(key)
     }
   }
 }

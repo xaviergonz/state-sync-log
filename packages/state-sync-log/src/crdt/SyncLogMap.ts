@@ -3,19 +3,23 @@ import { JSONValue } from "../json"
 import { ActiveEntry, addToTombstones, isInTombstones, MapStore, parseKey } from "./SyncLogEncoding"
 
 /**
+ * Change types for map events.
+ * - add: Key was added (newValue only)
+ * - delete: Key was deleted (oldValue only)
+ */
+export type SyncLogMapChange<T> = { action: "add"; newValue: T } | { action: "delete"; oldValue: T }
+
+/**
  * Observer callback for map changes.
  */
-export type SyncLogMapObserver<T extends JSONValue = JSONValue> = (
-  event: SyncLogMapEvent<T>,
-  txOrigin: unknown
-) => void
+export type SyncLogMapObserver<T> = (event: SyncLogMapEvent<T>, txOrigin: unknown) => void
 
 /**
  * Event emitted when map changes.
  */
-export interface SyncLogMapEvent<T extends JSONValue = JSONValue> {
+export interface SyncLogMapEvent<T> {
   changes: {
-    keys: Map<string, { action: "add" | "delete"; oldValue?: T; newValue?: T }>
+    keys: Map<string, SyncLogMapChange<T>>
   }
 }
 
@@ -24,24 +28,16 @@ export interface SyncLogMapEvent<T extends JSONValue = JSONValue> {
  */
 interface SyncLogMapOwner {
   isInTransaction(): boolean
-  queueMapChange(
-    mapName: string,
-    key: string,
-    change: { action: "add" | "delete"; oldValue?: JSONValue; newValue?: JSONValue }
-  ): void
+  queueMapChange(mapName: string, key: string, change: SyncLogMapChange<JSONValue>): void
   getCurrentOrigin(): unknown
-  emitSingleChange(
-    mapName: string,
-    key: string,
-    change: { action: "add" | "delete"; oldValue?: JSONValue; newValue?: JSONValue }
-  ): void
+  emitSingleChange(mapName: string, key: string, change: SyncLogMapChange<JSONValue>): void
 }
 
 /**
  * A CRDT map optimized for set-once keys with range-based tombstone compression.
- * @typeParam T - The type of values stored in this map (must be JSONValue-compatible)
+ * @typeParam T - The type of values stored in this map
  */
-export class SyncLogMap<T extends JSONValue = JSONValue> {
+export class SyncLogMap<T> {
   private readonly _name: string
   private readonly _store: MapStore
   private readonly _owner: SyncLogMapOwner
@@ -78,7 +74,7 @@ export class SyncLogMap<T extends JSONValue = JSONValue> {
       failure(`Key already exists: "${key}"`)
     }
 
-    const entry: ActiveEntry = { key, value, clientId, seq }
+    const entry: ActiveEntry = { key, value: value as JSONValue, clientId, seq }
     this._store.active.set(key, entry)
 
     this._notifyChange(key, { action: "add", newValue: value })
@@ -166,27 +162,22 @@ export class SyncLogMap<T extends JSONValue = JSONValue> {
   /**
    * Internal: Notify observers of a change.
    */
-  private _notifyChange(
-    key: string,
-    change: { action: "add" | "delete"; oldValue?: T; newValue?: T }
-  ): void {
+  private _notifyChange(key: string, change: SyncLogMapChange<T>): void {
     if (this._owner.isInTransaction()) {
-      this._owner.queueMapChange(this._name, key, change)
+      this._owner.queueMapChange(this._name, key, change as SyncLogMapChange<JSONValue>)
     } else {
-      this._owner.emitSingleChange(this._name, key, change)
+      this._owner.emitSingleChange(this._name, key, change as SyncLogMapChange<JSONValue>)
     }
   }
 
   /**
    * Internal: Emit event to observers.
    */
-  _emitEvent(
-    changes: Map<string, { action: "add" | "delete"; oldValue?: JSONValue; newValue?: JSONValue }>
-  ): void {
+  _emitEvent(changes: Map<string, SyncLogMapChange<JSONValue>>): void {
     if (changes.size === 0) return
     const event: SyncLogMapEvent<T> = {
       changes: {
-        keys: changes as Map<string, { action: "add" | "delete"; oldValue?: T; newValue?: T }>,
+        keys: changes as Map<string, SyncLogMapChange<T>>,
       },
     }
     const origin = this._owner.getCurrentOrigin()

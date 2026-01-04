@@ -3,10 +3,10 @@
  * Removed tests using Map/Set features (not supported)
  */
 
-import { createOps, isDraft, original } from "../../src/createOps"
+import { createOps, Draft, isDraft, original } from "../../src/createOps"
 
 // Helper to adapt mutative's `create` API to our `createOps` API
-function create<T extends object>(data: T, fn: (draft: T) => void): T {
+function create<T extends object>(data: T, fn: (draft: Draft<T>) => void): T {
   const { nextState } = createOps(data, fn)
   return nextState
 }

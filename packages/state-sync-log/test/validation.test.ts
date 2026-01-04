@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest"
-import * as Y from "yjs"
+import { SyncLogDoc } from "../src/crdt/SyncLogDoc"
 import { createStateSyncLog } from "../src/index"
 
 describe("Validation", () => {
   it("validates state changes", () => {
-    const doc = new Y.Doc()
+    const doc = new SyncLogDoc()
     const log = createStateSyncLog<any>({
-      yDoc: doc,
+      syncLogDoc: doc,
       retentionWindowMs: undefined,
       validate: (state) => typeof state.count === "number" && state.count >= 0,
     })
@@ -20,16 +20,16 @@ describe("Validation", () => {
   })
 
   it("rejects operations targeting non-existent paths", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: ["nonexistent"], key: "foo", value: 1 }])
     expect(log.getState()).toStrictEqual({})
   })
 
   it("allows set operation on array container (by index or property)", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "arr", value: [1, 2, 3] }])
     log.emit([{ kind: "set", path: ["arr"], key: 1, value: 99 }])
@@ -38,8 +38,8 @@ describe("Validation", () => {
   })
 
   it("allows delete operation on array container (creates sparse hole)", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "arr", value: [1, 2, 3] }])
     log.emit([{ kind: "delete", path: ["arr"], key: 0 }])
@@ -53,8 +53,8 @@ describe("Validation", () => {
   })
 
   it("rejects splice operation on object container", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "obj", value: { a: 1 } }])
     log.emit([{ kind: "splice", path: ["obj"], index: 0, deleteCount: 1, inserts: [] }])
@@ -63,8 +63,8 @@ describe("Validation", () => {
   })
 
   it("rejects addToSet operation on object container", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "obj", value: { a: 1 } }])
     log.emit([{ kind: "addToSet", path: ["obj"], value: "new" }])
@@ -73,8 +73,8 @@ describe("Validation", () => {
   })
 
   it("rejects deleteFromSet operation on object container", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "obj", value: { a: 1 } }])
     log.emit([{ kind: "deleteFromSet", path: ["obj"], value: "a" }])
@@ -83,8 +83,8 @@ describe("Validation", () => {
   })
 
   it("partial tx failure rejects entire tx", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "a", value: 1 }])
 
@@ -97,16 +97,16 @@ describe("Validation", () => {
   })
 
   it("throws if clientId contains a semicolon", () => {
-    const doc = new Y.Doc()
+    const doc = new SyncLogDoc()
     expect(() =>
-      createStateSyncLog({ yDoc: doc, clientId: "user;1", retentionWindowMs: undefined })
+      createStateSyncLog({ syncLogDoc: doc, clientId: "user;1", retentionWindowMs: undefined })
     ).toThrow("clientId MUST NOT contain semicolons")
   })
 
   it("handles validation function that throws", () => {
-    const doc = new Y.Doc()
+    const doc = new SyncLogDoc()
     const log = createStateSyncLog<any>({
-      yDoc: doc,
+      syncLogDoc: doc,
       retentionWindowMs: undefined,
       validate: (state) => {
         if (state.trigger === "error") {

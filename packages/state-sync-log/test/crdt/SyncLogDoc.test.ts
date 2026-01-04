@@ -109,7 +109,7 @@ describe("SyncLogCRDT", () => {
   })
 
   describe("Observers", () => {
-    it("notifies observers of changes", () => {
+    it("notifies observers of add changes with newValue only", () => {
       const doc = new SyncLogDoc()
       const map = doc.getMap("test")
       const observer = vi.fn()
@@ -119,11 +119,35 @@ describe("SyncLogCRDT", () => {
       map.set("A;1;;m", 42)
       expect(observer).toHaveBeenCalledTimes(1)
 
-      const event: SyncLogMapEvent = observer.mock.calls[0][0]
-      expect(event.changes.keys.get("A;1;;m")).toEqual({
+      const event: SyncLogMapEvent<unknown> = observer.mock.calls[0][0]
+      const change = event.changes.keys.get("A;1;;m")
+      expect(change).toEqual({
         action: "add",
         newValue: 42,
       })
+      // Verify no oldValue is present on add
+      expect(change).not.toHaveProperty("oldValue")
+    })
+
+    it("notifies observers of delete changes with oldValue only", () => {
+      const doc = new SyncLogDoc()
+      const map = doc.getMap("test")
+      const observer = vi.fn()
+
+      map.set("A;1;;m", 42)
+      map.observe(observer)
+
+      map.delete("A;1;;m")
+      expect(observer).toHaveBeenCalledTimes(1)
+
+      const event: SyncLogMapEvent<unknown> = observer.mock.calls[0][0]
+      const change = event.changes.keys.get("A;1;;m")
+      expect(change).toEqual({
+        action: "delete",
+        oldValue: 42,
+      })
+      // Verify no newValue is present on delete
+      expect(change).not.toHaveProperty("newValue")
     })
 
     it("batches changes in transactions", () => {
@@ -141,7 +165,7 @@ describe("SyncLogCRDT", () => {
 
       // Single notification with all changes
       expect(observer).toHaveBeenCalledTimes(1)
-      const event: SyncLogMapEvent = observer.mock.calls[0][0]
+      const event: SyncLogMapEvent<unknown> = observer.mock.calls[0][0]
       expect(event.changes.keys.size).toBe(3)
     })
 

@@ -7,9 +7,9 @@ import { describe, expect, it } from "vitest"
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-import * as Y from "yjs"
+import { SyncLogDoc } from "../src/crdt/SyncLogDoc"
+import { StateVector } from "../src/crdt/SyncLogEncoding"
 import { createStateSyncLog, type StateSyncLogController } from "../src/createStateSyncLog"
-
 import type { JSONObject, JSONRecord, JSONValue, Path } from "../src/json"
 import type { Op } from "../src/operations"
 
@@ -308,7 +308,7 @@ function generateRandomOp(state: JSONObject): Op | null {
   }
 }
 
-function syncConnectedClients(docs: Y.Doc[], connected: boolean[]): void {
+function syncConnectedClients(docs: SyncLogDoc[], connected: boolean[]): void {
   const connectedDocs = docs.filter((_, i) => connected[i])
   if (connectedDocs.length < 2) return
 
@@ -316,15 +316,15 @@ function syncConnectedClients(docs: Y.Doc[], connected: boolean[]): void {
   let changed = true
   while (changed) {
     changed = false
-    const updates = connectedDocs.map((doc) => Y.encodeStateAsUpdate(doc))
+    const updates = connectedDocs.map((doc) => doc.encodeStateAsUpdate())
     for (let i = 0; i < connectedDocs.length; i++) {
       for (let j = 0; j < updates.length; j++) {
         if (i !== j) {
-          const stateBefore = Y.encodeStateVector(connectedDocs[i])
-          Y.applyUpdate(connectedDocs[i], updates[j])
-          const stateAfter = Y.encodeStateVector(connectedDocs[i])
+          const stateBefore = connectedDocs[i].getStateVector()
+          connectedDocs[i].applyUpdate(updates[j])
+          const stateAfter = connectedDocs[i].getStateVector()
           // Check if state vector changed
-          if (!arraysEqual(stateBefore, stateAfter)) {
+          if (!stateVectorsEqual(stateBefore, stateAfter)) {
             changed = true
           }
         }
@@ -333,10 +333,10 @@ function syncConnectedClients(docs: Y.Doc[], connected: boolean[]): void {
   }
 }
 
-function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false
+function stateVectorsEqual(a: StateVector, b: StateVector): boolean {
+  if (a.size !== b.size) return false
+  for (const [key, val] of a) {
+    if (b.get(key) !== val) return false
   }
   return true
 }
@@ -376,12 +376,12 @@ describe("Fuzzy Sync", () => {
     const isReplay = fs.existsSync(logPath)
     const currentRunActions: FuzzyAction[] = []
 
-    const docs = [new Y.Doc(), new Y.Doc(), new Y.Doc()]
+    const docs = [new SyncLogDoc(), new SyncLogDoc(), new SyncLogDoc()]
     const clientIds = ["A", "B", "C"]
 
     const logs: StateSyncLogController<JSONObject>[] = docs.map((doc, i) =>
       createStateSyncLog<JSONObject>({
-        yDoc: doc,
+        syncLogDoc: doc,
         clientId: clientIds[i],
         retentionWindowMs: undefined,
       })

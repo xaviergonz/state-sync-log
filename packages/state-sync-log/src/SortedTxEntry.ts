@@ -1,4 +1,4 @@
-import type * as Y from "yjs"
+import { SyncLogMap } from "./crdt/SyncLogMap"
 import { failure } from "./error"
 import { TxRecord } from "./TxRecord"
 import { parseTxTimestampKey, type TxTimestamp, type TxTimestampKey } from "./txTimestamp"
@@ -16,7 +16,7 @@ export class SortedTxEntry {
 
   constructor(
     readonly txTimestampKey: TxTimestampKey,
-    private readonly _yTx: Y.Map<TxRecord>
+    private readonly _txMap: SyncLogMap<TxRecord>
   ) {}
 
   /**
@@ -73,7 +73,7 @@ export class SortedTxEntry {
    */
   get txRecord(): TxRecord {
     if (!this._txRecord) {
-      this._txRecord = this._yTx.get(this.txTimestampKey)
+      this._txRecord = this._txMap.get(this.txTimestampKey)
       if (!this._txRecord) {
         failure(`SortedTxEntry: TxRecord not found for key ${this.txTimestampKey}`)
       }

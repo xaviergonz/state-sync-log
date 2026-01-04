@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest"
-import * as Y from "yjs"
+import { SyncLogDoc } from "../src/crdt/SyncLogDoc"
 import { applyOps, createStateSyncLog, type Op } from "../src/index"
 
 describe("Operations", () => {
   it("handles basic set operations", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "count", value: 1 }])
     expect(log.getState()).toStrictEqual({ count: 1 })
@@ -13,8 +13,8 @@ describe("Operations", () => {
   })
 
   it("handles nested updates", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "user", value: { name: "Alice", age: 30 } }])
     expect(log.getState()).toStrictEqual({ user: { name: "Alice", age: 30 } })
@@ -24,8 +24,8 @@ describe("Operations", () => {
   })
 
   it("handles deletion", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "temp", value: "foo" }])
     expect(log.getState()).toStrictEqual({ temp: "foo" })
@@ -35,8 +35,8 @@ describe("Operations", () => {
   })
 
   it("handles array splice", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "list", value: [1, 2, 3] }])
     expect(log.getState()).toStrictEqual({ list: [1, 2, 3] })
@@ -46,8 +46,8 @@ describe("Operations", () => {
   })
 
   it("handles addToSet / deleteFromSet", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "tags", value: [] }])
 
@@ -66,8 +66,8 @@ describe("Operations", () => {
   })
 
   it("deleteFromSet removes all matching items", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "arr", value: ["a", "b", "a", "c", "a"] }])
     log.emit([{ kind: "deleteFromSet", path: ["arr"], value: "a" }])
@@ -76,8 +76,8 @@ describe("Operations", () => {
   })
 
   it("handles array path segments with numeric index", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([
       { kind: "set", path: [], key: "arr", value: [{ name: "first" }, { name: "second" }] },
@@ -88,8 +88,8 @@ describe("Operations", () => {
   })
 
   it("handles splice with out-of-bounds index safely", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "arr", value: [1, 2, 3] }])
     log.emit([{ kind: "splice", path: ["arr"], index: 100, deleteCount: 0, inserts: [4] }])
@@ -98,8 +98,8 @@ describe("Operations", () => {
   })
 
   it("handles negative splice index", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "arr", value: [1, 2, 3] }])
     log.emit([{ kind: "splice", path: ["arr"], index: -1, deleteCount: 0, inserts: [99] }])
@@ -109,8 +109,8 @@ describe("Operations", () => {
   })
 
   it("handles complex objects as addToSet values", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "items", value: [] }])
     log.emit([{ kind: "addToSet", path: ["items"], value: { id: 1, name: "first" } }])
@@ -126,8 +126,8 @@ describe("Operations", () => {
   })
 
   it("deleteFromSet with complex objects uses deep equality", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([
       {
@@ -148,8 +148,8 @@ describe("Operations", () => {
   })
 
   it("applies multiple operations in a single tx atomically", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([
       { kind: "set", path: [], key: "a", value: 1 },
@@ -161,8 +161,8 @@ describe("Operations", () => {
   })
 
   it("handles splice with excessive deleteCount (clamped to available)", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "arr", value: [1, 2, 3] }])
     // deleteCount=100 should only delete remaining elements (3 - index 1 = 2 elements)
@@ -172,8 +172,8 @@ describe("Operations", () => {
   })
 
   it("deleteFromSet on non-existing value is a no-op", () => {
-    const doc = new Y.Doc()
-    const log = createStateSyncLog<any>({ yDoc: doc, retentionWindowMs: undefined })
+    const doc = new SyncLogDoc()
+    const log = createStateSyncLog<any>({ syncLogDoc: doc, retentionWindowMs: undefined })
 
     log.emit([{ kind: "set", path: [], key: "arr", value: ["a", "b", "c"] }])
     log.emit([{ kind: "deleteFromSet", path: ["arr"], value: "nonexistent" }])
@@ -356,13 +356,17 @@ describe("applyOps validation", () => {
   it("throws when setting non-numeric property on array", () => {
     const target: any = { arr: [] }
     const ops: Op[] = [{ kind: "set", path: ["arr"], key: "someKey", value: 1 }]
-    expect(() => applyOps(ops, target)).toThrow(/Cannot set non-numeric property "someKey" on array/)
+    expect(() => applyOps(ops, target)).toThrow(
+      /Cannot set non-numeric property "someKey" on array/
+    )
   })
 
   it("throws when deleting non-numeric property from array", () => {
     const target: any = { arr: [] }
     const ops: Op[] = [{ kind: "delete", path: ["arr"], key: "someKey" }]
-    expect(() => applyOps(ops, target)).toThrow(/Cannot delete non-numeric property "someKey" from array/)
+    expect(() => applyOps(ops, target)).toThrow(
+      /Cannot delete non-numeric property "someKey" from array/
+    )
   })
 
   it("allows setting length property on array", () => {

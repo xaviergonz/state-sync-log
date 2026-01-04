@@ -225,27 +225,26 @@ export function encodeFullState(
 }
 
 /**
+ * Change types for encoding/decoding.
+ * Compatible with SyncLogMapChange.
+ */
+export type EncodingChange =
+  | { action: "add"; newValue: JSONValue }
+  | { action: "delete"; oldValue: JSONValue }
+
+/**
  * Decodes and applies an update.
  * Returns the changes for each map.
  */
 export function decodeAndApplyUpdate(
   update: EncodedUpdate,
   getOrCreateMap: (name: string) => MapStore
-): Map<
-  string,
-  Map<string, { action: "add" | "delete"; oldValue?: JSONValue; newValue?: JSONValue }>
-> {
-  const allChanges = new Map<
-    string,
-    Map<string, { action: "add" | "delete"; oldValue?: JSONValue; newValue?: JSONValue }>
-  >()
+): Map<string, Map<string, EncodingChange>> {
+  const allChanges = new Map<string, Map<string, EncodingChange>>()
 
   for (const [mapName, mapData] of Object.entries(update)) {
     const store = getOrCreateMap(mapName)
-    const changes = new Map<
-      string,
-      { action: "add" | "delete"; oldValue?: JSONValue; newValue?: JSONValue }
-    >()
+    const changes = new Map<string, EncodingChange>()
 
     // Apply tombstones first (t = tombstones)
     for (const [clientId, encodedRanges] of Object.entries(mapData.t)) {

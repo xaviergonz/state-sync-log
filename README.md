@@ -32,7 +32,7 @@ But for **business applications**, most often than not we have rules where "merg
 
 ## The Solution: state-sync-log
 
-`state-sync-log` is a **Validated Replicated State Machine**. It uses the same robust technology as Yjs in its core (networking, offline support), but it fundamentally changes the rules:
+`state-sync-log` is a **Validated Replicated State Machine** built on a custom, lightweight CRDT designed specifically for this use case. Unlike traditional CRDTs that merge everything:
 
 **Every transaction is validated against your business logic before it is applied.**
 
@@ -54,8 +54,7 @@ If a peer sends an invalid transaction your clients **reject it strictly and det
 Imagine a Kanban board where you strictly enforce a limit of **3 tasks** in the "Doing" column.
 
 ```ts
-import { createStateSyncLog } from "state-sync-log"
-import * as Y from "yjs"
+import { createStateSyncLog, SyncLogDoc } from "state-sync-log"
 
 type Task = { id: string; title: string; status: "todo" | "doing" | "done" }
 type State = { tasks: Task[] }
@@ -74,9 +73,9 @@ const validate = (state: State) => {
 
 // 2. Initialize the log
 const log = createStateSyncLog<State>({
-  yDoc: new Y.Doc(),
+  syncLogDoc: new SyncLogDoc(),
   validate,
-  // ... other options
+  retentionWindowMs: 14 * 24 * 60 * 60 * 1000, // 2 weeks
 })
 
 // 3. Try to move a 4th task to "doing"
@@ -93,8 +92,24 @@ log.emit([
 - ⏭️ **Replayable History**: Since it's an event log, you can replay history to see exactly *how* a state was reached (up to the nearest checkpoint).
 - 🏎️ **Optimistic UI**: Changes apply instantly locally. If they are later rejected (due to a conflict with a remote peer), the state automatically rolls back.
 - 📦 **Plain JSON**: Work with standard JS objects and arrays. No need to learn `ymap.get('foo')` syntax.
-- 🔌 **Network Agnostic**: Works with any Yjs provider (WebSockets, WebRTC, IndexedDB).
+- 🔌 **Network Agnostic**: Works with any transport layer (WebSockets, WebRTC, etc.). Bring your own sync.
 - 💾 **Storage Efficient**: Built-in compaction and retention policies keep your data small and fast.
+- 🪶 **Minimal CRDT Overhead**: Custom set-once LWW-Map design stays close to raw JSON size.
+
+### CRDT Size Comparison
+
+After 100 compaction cycles (10,000 total set/delete operations), with only the final checkpoint remaining:
+
+| Library | Encoded Size | Overhead vs JSON |
+| :--- | ---: | ---: |
+| *JSON baseline* | *~16 KB* | *1×* |
+| **state-sync-log** | **~16 KB** | **~1%** |
+| Yjs | ~305 KB | ~20× |
+| json-joy | ~348 KB | ~22× |
+| Automerge | ~517 KB | ~33× |
+| Loro | ~874 KB | ~56× |
+
+> **Note:** This benchmark simulates a realistic state-sync-log workload: 100 transactions → checkpoint → delete all transactions, repeated 100 times. Results may vary based on your specific use case.
 
 ## Contents
 
@@ -167,10 +182,10 @@ applyOps(appliedOps, store, { cloneValues: false })
 Initializes the synchronization log.
 
 ```ts
-import { createStateSyncLog } from "state-sync-log"
+import { createStateSyncLog, SyncLogDoc } from "state-sync-log"
 
 const log = createStateSyncLog<State>({
-  yDoc: new Y.Doc(),
+  syncLogDoc: new SyncLogDoc(),
   validate: (state) => state.inventory >= 0
 })
 ```
@@ -179,10 +194,10 @@ const log = createStateSyncLog<State>({
 
 | Option | Type | Description |
 | --- | --- | --- |
-| `yDoc` | `Y.Doc` | **Required.** The Yjs document instance. |
-| `validate` | `(state: State) => boolean` | **Required.** The gatekeeper function. If it returns `false`, the transaction is dropped. |
+| `syncLogDoc` | `SyncLogDoc` | **Required.** The SyncLogDoc CRDT instance. |
+| `validate` | `(state: State) => boolean` | Optional gatekeeper function. If it returns `false`, the transaction is dropped. |
 | `clientId` | `string` | Optional unique ID. Auto-generated if omitted. |
-| `retentionWindowMs` | `number` | Time to keep transaction history before pruning (recommended: 2 weeks). Helps keep storage small. |
+| `retentionWindowMs` | `number` | **Required.** Time to keep transaction history before pruning (recommended: 2 weeks). Helps keep storage small. Use `undefined` to disable pruning. |
 
 ### `StateSyncLogController`
 
@@ -357,7 +372,7 @@ const { ops } = createOps({ tags: ["a", "b"] }, (draft) => {
 ## Gotchas & Limitations
 
 1. **Validation must be deterministic:** Your `validate` function must return the same result for the same state input (deterministic). Don't check `Date.now()` or make API calls inside it.
-2. **Not for Text:** Do not use this for collaborative text editing (Google Docs style). Use standard Y.Text for that; you can mix standard Yjs and `state-sync-log` in the same application!
+2. **Not for Text:** Do not use this for collaborative text editing (Google Docs style). Use a dedicated text CRDT library like Y.js for that use case.
 
 ## Contributing
 

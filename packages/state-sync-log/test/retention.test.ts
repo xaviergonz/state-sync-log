@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import * as Y from "yjs"
 import { CheckpointRecord, parseCheckpointKey } from "../src/checkpoints"
+import { SyncLogDoc } from "../src/crdt/SyncLogDoc"
 import { createStateSyncLog, getSortedTxsSymbol } from "../src/createStateSyncLog"
 
 describe("Retention Window", () => {
@@ -16,9 +16,9 @@ describe("Retention Window", () => {
   })
 
   it("txs within retention window are preserved", () => {
-    const doc = new Y.Doc()
+    const doc = new SyncLogDoc()
     const log = createStateSyncLog<any>({
-      yDoc: doc,
+      syncLogDoc: doc,
       retentionWindowMs: TWO_WEEKS_MS,
     })
 
@@ -38,13 +38,13 @@ describe("Retention Window", () => {
   })
 
   it("watermarks for inactive clients are pruned after retention window", () => {
-    const doc = new Y.Doc()
+    const doc = new SyncLogDoc()
 
     // Start at time 0
     vi.setSystemTime(0)
 
     const logA = createStateSyncLog<any>({
-      yDoc: doc,
+      syncLogDoc: doc,
       clientId: "A",
       retentionWindowMs: ONE_WEEK_MS,
     })
@@ -58,7 +58,7 @@ describe("Retention Window", () => {
 
     // Create another client
     const logB = createStateSyncLog<any>({
-      yDoc: doc,
+      syncLogDoc: doc,
       clientId: "B",
       retentionWindowMs: ONE_WEEK_MS,
     })
@@ -103,12 +103,12 @@ describe("Retention Window", () => {
   })
 
   it("ancient txs from finalized epochs are not re-emitted", () => {
-    const doc = new Y.Doc()
+    const doc = new SyncLogDoc()
 
     vi.setSystemTime(0)
 
     const log = createStateSyncLog<any>({
-      yDoc: doc,
+      syncLogDoc: doc,
       retentionWindowMs: ONE_WEEK_MS,
     })
 
@@ -133,12 +133,12 @@ describe("Retention Window", () => {
   })
 
   it("retentionWindowMs of undefined means no pruning (infinite retention)", () => {
-    const doc = new Y.Doc()
+    const doc = new SyncLogDoc()
 
     vi.setSystemTime(0)
 
     const log = createStateSyncLog<any>({
-      yDoc: doc,
+      syncLogDoc: doc,
       retentionWindowMs: undefined,
     })
 
@@ -155,19 +155,19 @@ describe("Retention Window", () => {
   })
 
   it("two clients with retention window handle offline rejoin", () => {
-    const docA = new Y.Doc()
-    const docB = new Y.Doc()
+    const docA = new SyncLogDoc()
+    const docB = new SyncLogDoc()
 
     vi.setSystemTime(0)
 
     const logA = createStateSyncLog<any>({
-      yDoc: docA,
+      syncLogDoc: docA,
       clientId: "A",
       retentionWindowMs: ONE_WEEK_MS,
     })
 
     const logB = createStateSyncLog<any>({
-      yDoc: docB,
+      syncLogDoc: docB,
       clientId: "B",
       retentionWindowMs: ONE_WEEK_MS,
     })
@@ -176,8 +176,8 @@ describe("Retention Window", () => {
     logA.emit([{ kind: "set", path: [], key: "a1", value: 1 }])
 
     // Sync
-    const stateA1 = Y.encodeStateAsUpdate(docA)
-    Y.applyUpdate(docB, stateA1)
+    const stateA1 = docA.encodeStateAsUpdate()
+    docB.applyUpdate(stateA1)
 
     expect(logB.getState()).toStrictEqual({ a1: 1 })
 
@@ -192,10 +192,10 @@ describe("Retention Window", () => {
     logB.emit([{ kind: "set", path: [], key: "bOld", value: "old" }])
 
     // Sync both ways
-    const stateA2 = Y.encodeStateAsUpdate(docA)
-    const stateB = Y.encodeStateAsUpdate(docB)
-    Y.applyUpdate(docB, stateA2)
-    Y.applyUpdate(docA, stateB)
+    const stateA2 = docA.encodeStateAsUpdate()
+    const stateB = docB.encodeStateAsUpdate()
+    docB.applyUpdate(stateA2)
+    docA.applyUpdate(stateB)
 
     // Both should eventually converge
     // B's old tx may or may not be included depending on when it was created
@@ -209,13 +209,13 @@ describe("Retention Window", () => {
   })
 
   it("short retention window prunes quickly", () => {
-    const doc = new Y.Doc()
+    const doc = new SyncLogDoc()
     const SHORT_RETENTION = 1000 // 1 second
 
     vi.setSystemTime(0)
 
     const log = createStateSyncLog<any>({
-      yDoc: doc,
+      syncLogDoc: doc,
       retentionWindowMs: SHORT_RETENTION,
     })
 

@@ -1,25 +1,25 @@
 import { describe, expect, it } from "vitest"
-import * as Y from "yjs"
+import { SyncLogDoc } from "../src/crdt/SyncLogDoc"
 import { createStateSyncLog, type StateSyncLogController } from "../src/index"
 import type { JSONObject } from "../src/json"
 
 /**
- * Helper to create a two-client test setup with separate Y.Doc instances.
+ * Helper to create a two-client test setup with separate SyncLogDoc instances.
  * This simulates real network conditions where clients have their own documents
  * that sync via update messages.
  */
 function createTwoClientSetup() {
-  const docA = new Y.Doc()
-  const docB = new Y.Doc()
+  const docA = new SyncLogDoc()
+  const docB = new SyncLogDoc()
 
   const logA = createStateSyncLog<any>({
-    yDoc: docA,
+    syncLogDoc: docA,
     clientId: "A",
     retentionWindowMs: undefined,
   })
 
   const logB = createStateSyncLog<any>({
-    yDoc: docB,
+    syncLogDoc: docB,
     clientId: "B",
     retentionWindowMs: undefined,
   })
@@ -28,17 +28,17 @@ function createTwoClientSetup() {
 }
 
 /**
- * Syncs two Y.Doc instances bidirectionally.
+ * Syncs two SyncLogDoc instances bidirectionally.
  * Simulates a network round-trip where both clients exchange their updates.
  */
-function syncDocs(docA: Y.Doc, docB: Y.Doc): void {
+function syncDocs(docA: SyncLogDoc, docB: SyncLogDoc): void {
   // Get state vectors
-  const stateA = Y.encodeStateAsUpdate(docA)
-  const stateB = Y.encodeStateAsUpdate(docB)
+  const stateA = docA.encodeStateAsUpdate()
+  const stateB = docB.encodeStateAsUpdate()
 
   // Apply updates bidirectionally
-  Y.applyUpdate(docB, stateA)
-  Y.applyUpdate(docA, stateB)
+  docB.applyUpdate(stateA)
+  docA.applyUpdate(stateB)
 }
 
 /**
@@ -332,8 +332,8 @@ describe("Two Client Sync", () => {
   })
 
   it("handles validation consistently across clients", () => {
-    const docA = new Y.Doc()
-    const docB = new Y.Doc()
+    const docA = new SyncLogDoc()
+    const docB = new SyncLogDoc()
 
     const validate = (state: any) => {
       // Reject negative counts
@@ -341,14 +341,14 @@ describe("Two Client Sync", () => {
     }
 
     const logA = createStateSyncLog<any>({
-      yDoc: docA,
+      syncLogDoc: docA,
       clientId: "A",
       retentionWindowMs: undefined,
       validate,
     })
 
     const logB = createStateSyncLog<any>({
-      yDoc: docB,
+      syncLogDoc: docB,
       clientId: "B",
       retentionWindowMs: undefined,
       validate,

@@ -1,5 +1,5 @@
-import type * as Y from "yjs"
 import { type CheckpointRecord, type ClientWatermarks } from "./checkpoints"
+import { SyncLogMap } from "./crdt/SyncLogMap"
 import { applyTxImmutable } from "./draft"
 import { JSONObject } from "./json"
 import { Op, ValidateFn } from "./operations"
@@ -93,16 +93,16 @@ export class StateCalculator {
   }
 
   /**
-   * Clears all transactions and rebuilds from yTx map.
+   * Clears all transactions and rebuilds from the tx map.
    * This is used when the checkpoint changes and we need a fresh start.
    */
-  rebuildFromYjs(yTx: Y.Map<TxRecord>): void {
+  rebuildFromSyncLogMap(txMap: SyncLogMap<TxRecord>): void {
     this.sortedTxs = []
     this.sortedTxsMap.clear()
 
     // Collect all entries, build the map and max clock
-    for (const key of yTx.keys()) {
-      const entry = new SortedTxEntry(key, yTx)
+    for (const key of txMap.keys()) {
+      const entry = new SortedTxEntry(key, txMap)
       this.sortedTxs.push(entry)
 
       this.sortedTxsMap.set(entry.txTimestampKey, entry)
@@ -124,12 +124,12 @@ export class StateCalculator {
    *
    * @returns true if this caused invalidation (out-of-order insert)
    */
-  insertTx(key: TxTimestampKey, yTx: Y.Map<TxRecord>): boolean {
+  insertTx(key: TxTimestampKey, txMap: SyncLogMap<TxRecord>): boolean {
     if (this.sortedTxsMap.has(key)) {
       return false // Already exists
     }
 
-    const entry = new SortedTxEntry(key, yTx)
+    const entry = new SortedTxEntry(key, txMap)
     const ts = entry.txTimestamp
 
     // Update max seen clock for Lamport clock mechanism

@@ -1,5 +1,5 @@
-import * as Y from "yjs"
 import { type CheckpointRecord, parseCheckpointKey } from "./checkpoints"
+import { SyncLogMap } from "./crdt/SyncLogMap"
 
 /**
  * Determines the finalized epoch and its canonical checkpoint in a single pass.
@@ -10,7 +10,7 @@ import { type CheckpointRecord, parseCheckpointKey } from "./checkpoints"
  *
  * Returns { finalizedEpoch: -1, checkpoint: null } if no checkpoints exist.
  */
-export function getFinalizedEpochAndCheckpoint(yCheckpoint: Y.Map<CheckpointRecord>): {
+export function getFinalizedEpochAndCheckpoint(checkpointMap: SyncLogMap<CheckpointRecord>): {
   finalizedEpoch: number
   checkpoint: CheckpointRecord | null
 } {
@@ -19,7 +19,7 @@ export function getFinalizedEpochAndCheckpoint(yCheckpoint: Y.Map<CheckpointReco
   let bestTxCount = -1
   let bestClientId = ""
 
-  for (const [key, cp] of yCheckpoint.entries()) {
+  for (const [key, cp] of checkpointMap.entries()) {
     const { epoch, clientId } = parseCheckpointKey(key)
 
     if (epoch > maxEpoch) {

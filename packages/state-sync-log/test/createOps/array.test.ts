@@ -3,10 +3,10 @@
  * Removed tests using mark feature (not supported)
  */
 
-import { createOps, isDraft } from "../../src/createOps"
+import { createOps, Draft, isDraft } from "../../src/createOps"
 
 // Helper to adapt mutative's `create` API to our `createOps` API
-function create<T extends object>(data: T, fn: (draft: T) => void): T {
+function create<T extends object>(data: T, fn: (draft: Draft<T>) => void): T {
   const { nextState } = createOps(data, fn)
   return nextState
 }
