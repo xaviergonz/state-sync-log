@@ -145,7 +145,7 @@ function applyOp(state: JSONObject, op: Op, cloneValues: boolean): void {
       break
 
     default:
-      throw failure(`Unknown operation kind: ${(op as any).kind}`)
+      failure(`Unknown operation kind: ${(op as any).kind}`)
   }
 }
 

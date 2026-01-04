@@ -19,7 +19,7 @@ export type TxTimestampKey = string
  * Converts a timestamp object to a TransactionTimestampKey string.
  */
 export function txTimestampToKey(ts: TxTimestamp): TxTimestampKey {
-  return `${ts.epoch};${ts.clock};${ts.clientId};${ts.wallClock}`
+  return `${ts.clientId};${ts.clock};;${ts.epoch};${ts.wallClock}`
 }
 
 /**
@@ -27,19 +27,16 @@ export function txTimestampToKey(ts: TxTimestamp): TxTimestampKey {
  * Throws if key is malformed.
  */
 export function parseTxTimestampKey(key: TxTimestampKey): TxTimestamp {
-  const i1 = key.indexOf(";")
-  const i2 = key.indexOf(";", i1 + 1)
-  const i3 = key.indexOf(";", i2 + 1)
-
-  if (i1 === -1 || i2 === -1 || i3 === -1) {
+  const parts = key.split(";")
+  if (parts.length < 5 || parts[2] !== "") {
     failure(`Malformed timestamp key: ${key}`)
   }
 
   return {
-    epoch: Number.parseInt(key.substring(0, i1), 10),
-    clock: Number.parseInt(key.substring(i1 + 1, i2), 10),
-    clientId: key.substring(i2 + 1, i3),
-    wallClock: Number.parseInt(key.substring(i3 + 1), 10),
+    clientId: parts[0],
+    clock: Number.parseInt(parts[1], 10),
+    epoch: Number.parseInt(parts[3], 10),
+    wallClock: Number.parseInt(parts[4], 10),
   }
 }
 

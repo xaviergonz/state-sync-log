@@ -13,7 +13,7 @@ describe("TxTimestamp", () => {
 
   it("txTimestampToKey formats correctly", () => {
     const ts = { epoch: 10, clock: 5, clientId: "alice", wallClock: 123456789 }
-    expect(txTimestampToKey(ts)).toBe("10;5;alice;123456789")
+    expect(txTimestampToKey(ts)).toBe("alice;5;;10;123456789")
   })
 
   it("compareTxTimestamps orders by epoch", () => {

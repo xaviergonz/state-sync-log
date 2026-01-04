@@ -22,7 +22,7 @@ import { getAllPathsForDraft } from "./utils"
 export function pushOp(proxyDraft: ProxyDraft, op: Op): void {
   const rootDraft = proxyDraft.finalities.rootDraft
   if (!rootDraft) {
-    throw failure("rootDraft is not set - cannot emit op")
+    failure("rootDraft is not set - cannot emit op")
   }
 
   // Fast path: no aliasing, just emit the single op

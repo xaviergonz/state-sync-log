@@ -141,7 +141,7 @@ export function getPath(
 export function getPathOrThrow(target: ProxyDraft): (string | number)[] {
   const path = getPath(target)
   if (!path) {
-    throw failure("Cannot determine path for operation")
+    failure("Cannot determine path for operation")
   }
   return path
 }

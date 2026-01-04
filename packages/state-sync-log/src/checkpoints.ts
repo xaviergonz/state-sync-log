@@ -51,26 +51,25 @@ export type CheckpointKeyData = {
  * Converts checkpoint key data components to a key string.
  */
 function checkpointKeyDataToKey(data: CheckpointKeyData): CheckpointKey {
-  return `${data.epoch};${data.txCount};${data.clientId}`
+  return `${data.clientId};${data.epoch};;${data.txCount}`
 }
 
 /**
  * Helper to parse checkpoint keys.
- * Checkpoint keys have format: `${epoch};${txCount};${clientId}`
+ * Checkpoint keys have format: `${clientId};${epoch};;${txCount}`
  * Throws if key is malformed.
  */
 export function parseCheckpointKey(key: CheckpointKey): CheckpointKeyData {
-  const i1 = key.indexOf(";")
-  const i2 = key.indexOf(";", i1 + 1)
+  const parts = key.split(";")
 
-  if (i1 === -1 || i2 === -1) {
+  if (parts.length < 4 || parts[2] !== "") {
     failure(`Malformed checkpoint key: ${key}`)
   }
 
   return {
-    epoch: Number.parseInt(key.substring(0, i1), 10),
-    txCount: Number.parseInt(key.substring(i1 + 1, i2), 10),
-    clientId: key.substring(i2 + 1),
+    clientId: parts[0],
+    epoch: Number.parseInt(parts[1], 10),
+    txCount: Number.parseInt(parts[3], 10),
   }
 }
 

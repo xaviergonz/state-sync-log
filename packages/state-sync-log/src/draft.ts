@@ -264,7 +264,7 @@ export function applyOpToDraft<T extends JSONObject>(ctx: DraftContext<T>, op: O
       draftDeleteFromSet(ctx, op.path, op.value)
       break
     default:
-      throw failure(`Unknown operation kind: ${(op as any).kind}`)
+      failure(`Unknown operation kind: ${(op as any).kind}`)
   }
 }
 

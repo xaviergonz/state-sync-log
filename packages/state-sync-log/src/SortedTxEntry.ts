@@ -75,7 +75,7 @@ export class SortedTxEntry {
     if (!this._txRecord) {
       this._txRecord = this._yTx.get(this.txTimestampKey)
       if (!this._txRecord) {
-        throw failure(`SortedTxEntry: TxRecord not found for key ${this.txTimestampKey}`)
+        failure(`SortedTxEntry: TxRecord not found for key ${this.txTimestampKey}`)
       }
     }
     return this._txRecord
