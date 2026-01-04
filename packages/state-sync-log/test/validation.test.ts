@@ -8,7 +8,6 @@ describe("Validation", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
       validate: (state) => typeof state.count === "number" && state.count >= 0,
     })
 
@@ -25,7 +24,6 @@ describe("Validation", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: ["nonexistent"], key: "foo", value: 1 }])
@@ -37,7 +35,6 @@ describe("Validation", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "arr", value: [1, 2, 3] }])
@@ -51,7 +48,6 @@ describe("Validation", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "arr", value: [1, 2, 3] }])
@@ -70,7 +66,6 @@ describe("Validation", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "obj", value: { a: 1 } }])
@@ -84,7 +79,6 @@ describe("Validation", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "obj", value: { a: 1 } }])
@@ -98,7 +92,6 @@ describe("Validation", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "obj", value: { a: 1 } }])
@@ -112,7 +105,6 @@ describe("Validation", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "a", value: 1 }])
@@ -132,7 +124,6 @@ describe("Validation", () => {
         syncLogDoc: doc,
         clientId: "user;1",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
     ).toThrow("clientId MUST NOT contain semicolons")
   })
@@ -142,7 +133,6 @@ describe("Validation", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
       validate: (state) => {
         if (state.trigger === "error") {
           throw new Error("Validation exploded!")

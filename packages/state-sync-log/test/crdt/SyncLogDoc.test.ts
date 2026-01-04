@@ -410,7 +410,7 @@ describe("SyncLogCRDT", () => {
   })
 
   describe("Size Verification", () => {
-    const compactionCycles = 100
+    const checkpointCycles = 100
     const txCount = 10
     const stateKeyCount = 1000
 
@@ -433,8 +433,8 @@ describe("SyncLogCRDT", () => {
       const tx = doc.getMap("tx")
       const checkpoint = doc.getMap("checkpoint")
 
-      // Simulate compaction cycles
-      for (let cycle = 0; cycle < compactionCycles; cycle++) {
+      // Simulate checkpoint cycles
+      for (let cycle = 0; cycle < checkpointCycles; cycle++) {
         // Add transactions
         for (let i = 0; i < txCount; i++) {
           tx.set(
@@ -455,14 +455,14 @@ describe("SyncLogCRDT", () => {
           checkpoint.delete(`A;${cycle - 1};;${txCount}`)
         }
 
-        // Delete all transactions (compaction)
+        // Delete all transactions (checkpointing)
         for (let i = 0; i < txCount; i++) {
           tx.delete(`A;${cycle * txCount + i};;${cycle};123456789`)
         }
       }
 
       // GC with a fully synced client (knows everything)
-      const fullSv = new Map([["A", compactionCycles * txCount]])
+      const fullSv = new Map([["A", checkpointCycles * txCount]])
       doc.gc(fullSv)
 
       const update = doc.encodeStateAsUpdate()
@@ -479,7 +479,7 @@ describe("SyncLogCRDT", () => {
 
       const lagCycles = 90 // Client is 90 cycles behind
 
-      for (let cycle = 0; cycle < compactionCycles; cycle++) {
+      for (let cycle = 0; cycle < checkpointCycles; cycle++) {
         for (let i = 0; i < txCount; i++) {
           tx.set(
             `A;${cycle * txCount + i};;${cycle};123456789`,
@@ -500,7 +500,7 @@ describe("SyncLogCRDT", () => {
       }
 
       // GC with a lagging client (knows up to cycle 10)
-      const laggingSeq = (compactionCycles - lagCycles) * txCount
+      const laggingSeq = (checkpointCycles - lagCycles) * txCount
       const laggingSv = new Map([["A", laggingSeq]])
       doc.gc(laggingSv)
 
@@ -519,7 +519,7 @@ describe("SyncLogCRDT", () => {
       const tx = doc.getMap("tx")
       const checkpoint = doc.getMap("checkpoint")
 
-      for (let cycle = 0; cycle < compactionCycles; cycle++) {
+      for (let cycle = 0; cycle < checkpointCycles; cycle++) {
         for (let i = 0; i < txCount; i++) {
           tx.set(
             `A;${cycle * txCount + i};;${cycle};123456789`,

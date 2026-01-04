@@ -3,65 +3,63 @@ import { CheckpointRecord, parseCheckpointKey } from "../src/checkpoints"
 import { SyncLogDoc } from "../src/crdt/SyncLogDoc"
 import { createStateSyncLog, getSortedTxsSymbol } from "../src/createStateSyncLog"
 import { applyOps } from "../src/operations"
+import { applyLocalCheckpoint } from "./utils"
 
 describe("Checkpoints", () => {
-  it("compacts epoch and maintains state", () => {
+  it("checkpoints epoch and maintains state", () => {
     const doc = new SyncLogDoc()
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "a", value: 1 }])
     const epoch1 = log.getActiveEpoch()
 
-    log.compact()
+    applyLocalCheckpoint(log)
 
     expect(log.getActiveEpoch()).toBe(epoch1 + 1)
     expect(log.getState()).toStrictEqual({ a: 1 })
     expect(log.isLogEmpty()).toBe(false)
   })
 
-  it("multiple compact calls increment epochs correctly", () => {
+  it("multiple checkpoint calls increment epochs correctly", () => {
     const doc = new SyncLogDoc()
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     const epoch0 = log.getActiveEpoch()
     expect(epoch0).toBe(0)
 
     log.emit([{ kind: "set", path: [], key: "a", value: 1 }])
-    log.compact()
+    applyLocalCheckpoint(log)
     expect(log.getActiveEpoch()).toBe(1)
 
     log.emit([{ kind: "set", path: [], key: "b", value: 2 }])
-    log.compact()
+    applyLocalCheckpoint(log)
     expect(log.getActiveEpoch()).toBe(2)
 
     log.emit([{ kind: "set", path: [], key: "c", value: 3 }])
-    log.compact()
+    applyLocalCheckpoint(log)
     expect(log.getActiveEpoch()).toBe(3)
 
     expect(log.getState()).toStrictEqual({ a: 1, b: 2, c: 3 })
   })
 
-  it("preserves state after multiple compacts with no new txs", () => {
+  it("preserves state after multiple checkpoints with no new txs", () => {
     const doc = new SyncLogDoc()
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "persistent", value: 42 }])
-    log.compact()
+    applyLocalCheckpoint(log)
 
-    log.compact()
-    log.compact()
+    applyLocalCheckpoint(log)
+    applyLocalCheckpoint(log)
 
     expect(log.getState()).toStrictEqual({ persistent: 42 })
   })
@@ -72,53 +70,49 @@ describe("Checkpoints", () => {
       syncLogDoc: doc,
       clientId: "A",
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log1.emit([{ kind: "set", path: [], key: "data", value: { preserved: true } }])
-    log1.compact()
+    applyLocalCheckpoint(log1)
 
     const log2 = createStateSyncLog<any>({
       syncLogDoc: doc,
       clientId: "B",
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     expect(log2.getState()).toStrictEqual({ data: { preserved: true } })
   })
 
-  it("compact does nothing when epoch is empty", () => {
+  it("checkpoint does nothing when epoch is empty", () => {
     const doc = new SyncLogDoc()
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     expect(log.getActiveEpoch()).toBe(0)
 
-    log.compact() // Should be no-op
+    applyLocalCheckpoint(log) // Should be no-op
 
     expect(log.getActiveEpoch()).toBe(0) // Still epoch 0
   })
 
-  it("txs after compact are in new epoch", () => {
+  it("txs after checkpoint are in new epoch", () => {
     const doc = new SyncLogDoc()
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "before", value: 1 }])
-    log.compact()
+    applyLocalCheckpoint(log)
 
-    const epochAfterCompact = log.getActiveEpoch()
+    const epochAfterCheckpoint = log.getActiveEpoch()
 
     log.emit([{ kind: "set", path: [], key: "after", value: 2 }])
 
-    expect(log.getActiveEpoch()).toBe(epochAfterCompact)
+    expect(log.getActiveEpoch()).toBe(epochAfterCheckpoint)
     // State should have both (old was in checkpoint, new is fresh)
     expect(log.getState()).toStrictEqual({ before: 1, after: 2 })
   })
@@ -135,7 +129,6 @@ describe("Checkpoints", () => {
       syncLogDoc: doc,
       clientId: "A",
       retentionWindowMs: 1000,
-      autoCompact: () => false,
     })
 
     // Access internal map for checkpoint verification (no public API for watermarks yet)
@@ -144,11 +137,11 @@ describe("Checkpoints", () => {
     // Add a tx in epoch 1
     log.emit([])
 
-    // Verify tx exists before compact
+    // Verify tx exists before checkpoint
     expect(log[getSortedTxsSymbol]().length).toBe(1)
 
-    // Compact (creates checkpoint for epoch 1 and prunes txs)
-    log.compact()
+    // Checkpoint (creates checkpoint for epoch 1 and prunes txs)
+    applyLocalCheckpoint(log)
 
     // Checkpoint should be created
     expect(yCheckpoint.size).toBe(1)
@@ -156,12 +149,11 @@ describe("Checkpoints", () => {
     expect(log[getSortedTxsSymbol]().length).toBe(0)
   })
 
-  it("preserves structural sharing after compaction", () => {
+  it("preserves structural sharing after checkpointing", () => {
     const doc = new SyncLogDoc()
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     // Create nested state
@@ -170,17 +162,17 @@ describe("Checkpoints", () => {
       { kind: "set", path: [], key: "willChange", value: { data: 1 } },
     ])
 
-    const stateBeforeCompact = log.getState()
+    const stateBeforeCheckpoint = log.getState()
 
-    // Compact - creates checkpoint
-    log.compact()
+    // Checkpoint - creates checkpoint
+    applyLocalCheckpoint(log)
 
-    const stateAfterCompact = log.getState()
-    const unchangedRefAfterCompact = stateAfterCompact.unchanged
+    const stateAfterCheckpoint = log.getState()
+    const unchangedRefAfterCheckpoint = stateAfterCheckpoint.unchanged
 
-    // After compaction, state should still be structurally shared with checkpoint
-    expect(stateAfterCompact.unchanged).toBe(unchangedRefAfterCompact)
-    expect(stateAfterCompact).toStrictEqual(stateBeforeCompact)
+    // After checkpointing, state should still be structurally shared with checkpoint
+    expect(stateAfterCheckpoint.unchanged).toBe(unchangedRefAfterCheckpoint)
+    expect(stateAfterCheckpoint).toStrictEqual(stateBeforeCheckpoint)
 
     // Now update only the "willChange" key
     log.emit([{ kind: "set", path: ["willChange"], key: "data", value: 2 }])
@@ -188,8 +180,8 @@ describe("Checkpoints", () => {
     const stateAfterUpdate = log.getState()
 
     // The "unchanged" subtree should maintain reference equality
-    expect(stateAfterUpdate.unchanged).toBe(unchangedRefAfterCompact)
-    expect(stateAfterUpdate.unchanged.nested).toBe(unchangedRefAfterCompact.nested)
+    expect(stateAfterUpdate.unchanged).toBe(unchangedRefAfterCheckpoint)
+    expect(stateAfterUpdate.unchanged.nested).toBe(unchangedRefAfterCheckpoint.nested)
 
     // The changed part should have new value
     expect(stateAfterUpdate.willChange.data).toBe(2)
@@ -210,19 +202,16 @@ describe("Checkpoints", () => {
     const log1 = createStateSyncLog<any>({
       syncLogDoc: doc1,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     const log2 = createStateSyncLog<any>({
       syncLogDoc: doc2,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     const log3 = createStateSyncLog<any>({
       syncLogDoc: doc3,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     // Client 1 creates initial state with nested structures
@@ -266,7 +255,6 @@ describe("Checkpoints", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
       validate,
     })
 
@@ -311,14 +299,12 @@ describe("Checkpoints", () => {
     const log1 = createStateSyncLog<any>({
       syncLogDoc: doc1,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
       validate,
     })
 
     const log2 = createStateSyncLog<any>({
       syncLogDoc: doc2,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
       validate,
     })
 
@@ -371,14 +357,12 @@ describe("Checkpoints", () => {
     const log1 = createStateSyncLog<any>({
       syncLogDoc: doc1,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
       validate,
     })
 
     const log2 = createStateSyncLog<any>({
       syncLogDoc: doc2,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
       validate,
     })
 
@@ -411,7 +395,6 @@ describe("Checkpoints", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       // 1. Client A creates state and checkpoints it
@@ -419,7 +402,7 @@ describe("Checkpoints", () => {
         { kind: "set", path: [], key: "x", value: 1 },
         { kind: "set", path: [], key: "y", value: 2 },
       ])
-      logA.compact() // Creates checkpoint, active epoch becomes 1
+      applyLocalCheckpoint(logA) // Creates checkpoint, active epoch becomes 1
 
       expect(logA.getState()).toStrictEqual({ x: 1, y: 2 })
 
@@ -429,7 +412,6 @@ describe("Checkpoints", () => {
         syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       // Client B maintains a mutable state
@@ -470,7 +452,6 @@ describe("Checkpoints", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       const docB = new SyncLogDoc()
@@ -478,7 +459,6 @@ describe("Checkpoints", () => {
         syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       // 1. Client B has some initial state (epoch 0)
@@ -499,7 +479,7 @@ describe("Checkpoints", () => {
         { kind: "set", path: [], key: "x", value: 100 },
         { kind: "set", path: [], key: "existing", value: "overwritten" },
       ])
-      logA.compact()
+      applyLocalCheckpoint(logA)
 
       // 4. Sync A -> B (B accepts checkpoint)
       docB.applyUpdate(docA.encodeStateAsUpdate())

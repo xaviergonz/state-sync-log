@@ -1,5 +1,4 @@
 import { ClientId } from "./ClientId"
-import { getFinalizedEpochAndCheckpoint } from "./checkpointUtils"
 import { ClientState } from "./clientState"
 import { SyncLogMap } from "./crdt/SyncLogMap"
 import { failure } from "./error"
@@ -50,7 +49,7 @@ export type CheckpointKeyData = {
 /**
  * Converts checkpoint key data components to a key string.
  */
-function checkpointKeyDataToKey(data: CheckpointKeyData): CheckpointKey {
+export function checkpointKeyDataToKey(data: CheckpointKeyData): CheckpointKey {
   return `${data.clientId};${data.epoch};;${data.txCount}`
 }
 
@@ -74,30 +73,27 @@ export function parseCheckpointKey(key: CheckpointKey): CheckpointKeyData {
 }
 
 /**
- * Called periodically (e.g. by a server or leader client) to finalize the epoch.
+ * Data returned by createCheckpoint for server-mediated checkpointing.
+ * The server should broadcast this to all connected clients via addCheckpoint.
  */
-export function createCheckpoint(
-  txMap: SyncLogMap<EncodedTxRecord>,
-  checkpointMap: SyncLogMap<CheckpointRecord>,
-  clientState: ClientState,
-  activeEpoch: number,
-  currentState: JSONObject,
-  myClientId: string
-): void {
-  // 1. Start with previous watermarks (from finalized epoch = activeEpoch - 1)
-  const { checkpoint: prevCP } = getFinalizedEpochAndCheckpoint(checkpointMap)
-  const newWatermarks = prevCP ? { ...prevCP.watermarks } : {}
+export interface CheckpointData {
+  /**
+   * The unique key for this checkpoint.
+   */
+  key: CheckpointKey
+  /**
+   * The checkpoint record containing state snapshot and metadata.
+   */
+  record: CheckpointRecord
+}
 
-  // Get active txs using cached sorted order (filter by epoch)
-  // FILTER IS REQUIRED:
-  // Although we are finalizing 'activeEpoch', other peers may have already
-  // advanced to the next epoch and started syncing those txs.
-  // We must ensure this checkpoint ONLY contains txs from 'activeEpoch'.
-  // Using stateCalculator.getSortedTxs avoids redundant key parsing (timestamps are cached).
-  //
-  // OPTIMIZATION: Since sortedTxs is sorted by epoch (primary key) and past epochs
-  // are pruned, we only need to find the right boundary. Future epochs are rare,
-  // so a simple linear search from the right is efficient (typically 0-1 iterations).
+/**
+ * Helper to get active txs for the current epoch from sorted txs.
+ */
+function getActiveTxsForEpoch(
+  clientState: ClientState,
+  activeEpoch: number
+): readonly import("./SortedTxEntry").SortedTxEntry[] {
   const sortedTxs = clientState.stateCalculator.getSortedTxs()
 
   // Find end boundary by searching from right (skip any future epoch entries)
@@ -107,23 +103,35 @@ export function createCheckpoint(
   }
 
   // Slice from start to endIndex (past epochs are pruned, so these are all activeEpoch)
-  const activeTxs = sortedTxs.slice(0, endIndex)
+  return sortedTxs.slice(0, endIndex)
+}
+
+/**
+ * Builds checkpoint data without persisting it.
+ * Returns null if there are no transactions to checkpoint.
+ */
+export function buildCheckpointData(
+  clientState: ClientState,
+  activeEpoch: number,
+  currentState: JSONObject,
+  clientId: string,
+  prevCheckpoint: CheckpointRecord | null
+): CheckpointData | null {
+  const newWatermarks = prevCheckpoint ? { ...prevCheckpoint.watermarks } : {}
+
+  // Get active txs for current epoch
+  const activeTxs = getActiveTxsForEpoch(clientState, activeEpoch)
 
   if (activeTxs.length === 0) {
-    return // Do nothing if no txs (prevents empty epochs)
+    return null // No txs to checkpoint
   }
 
-  // 2. Update watermarks based on OBSERVED active txs and calculate minWallClock
-  // NOTE: We cannot use activeTxs[0].txTimestamp.wallClock for minWallClock because
-  // txs are sorted by Lamport clock (epoch → clock → clientId), not by wallClock.
-  // A client may have a high Lamport clock but early wallClock due to clock drift
-  // or receiving many messages before emitting.
+  // Calculate watermarks and minWallClock
   let minWallClock = Number.POSITIVE_INFINITY
   let txCount = 0
   for (const entry of activeTxs) {
     const ts = entry.txTimestamp
 
-    // Track min wallClock for deterministic pruning reference
     if (ts.wallClock < minWallClock) {
       minWallClock = ts.wallClock
     }
@@ -140,28 +148,52 @@ export function createCheckpoint(
     txCount++
   }
 
-  // 3. Prune Inactive Watermarks (Deterministic)
-  // Uses minWallClock so all clients agree on exactly who to prune.
-  for (const clientId in newWatermarks) {
-    if (minWallClock - newWatermarks[clientId].maxWallClock > clientState.retentionWindowMs) {
-      delete newWatermarks[clientId]
+  // Prune inactive watermarks
+  for (const wClientId in newWatermarks) {
+    if (minWallClock - newWatermarks[wClientId].maxWallClock > clientState.retentionWindowMs) {
+      delete newWatermarks[wClientId]
     }
   }
 
-  // 4. Save Checkpoint
+  // Build checkpoint key and record
   const cpKey = checkpointKeyDataToKey({
     epoch: activeEpoch,
     txCount,
-    clientId: myClientId,
+    clientId,
   })
-  checkpointMap.set(cpKey, {
-    state: currentState, // Responsibility for cloning is moved to the caller if needed
+
+  const cpRecord: CheckpointRecord = {
+    state: currentState,
     watermarks: newWatermarks,
     txCount,
     minWallClock,
-  })
+  }
 
-  // 5. Early tx pruning (Optimization)
+  return { key: cpKey, record: cpRecord }
+}
+
+/**
+ * Internal function called to persist a checkpoint and prune transactions.
+ * Called by addCheckpoint in createStateSyncLog.
+ *
+ * @param checkpoint - The checkpoint data to persist (created by createCheckpoint)
+ */
+export function createCheckpointInternal(
+  txMap: SyncLogMap<EncodedTxRecord>,
+  checkpointMap: SyncLogMap<CheckpointRecord>,
+  clientState: ClientState,
+  activeEpoch: number,
+  _currentState: JSONObject,
+  _myClientId: string,
+  checkpoint: CheckpointData
+): void {
+  // 1. Persist the checkpoint
+  checkpointMap.set(checkpoint.key, checkpoint.record)
+
+  // 2. Get active txs for pruning
+  const activeTxs = getActiveTxsForEpoch(clientState, activeEpoch)
+
+  // 3. Early tx pruning (Optimization)
   // Delete all txs from the now-finalized epoch
   // This reduces memory pressure instead of waiting for cleanupLog
   const keysToDelete: TxTimestampKey[] = []

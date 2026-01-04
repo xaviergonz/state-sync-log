@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { SyncLogDoc } from "../src/crdt/SyncLogDoc"
 import { createStateSyncLog, getSortedTxsSymbol } from "../src/createStateSyncLog"
+import { applyLocalCheckpoint } from "./utils"
 
 describe("Sync", () => {
   it("syncs between two clients", async () => {
@@ -28,13 +29,11 @@ describe("Sync", () => {
       syncLogDoc: doc,
       clientId: "A",
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
     const log2 = createStateSyncLog<any>({
       syncLogDoc: doc,
       clientId: "B",
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log1.emit([{ kind: "set", path: [], key: "x", value: 1 }]) // Clock 1
@@ -50,7 +49,6 @@ describe("Sync", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     for (let i = 0; i < 10; i++) {
@@ -69,17 +67,15 @@ describe("Sync", () => {
       syncLogDoc: doc,
       clientId: "A",
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log1.emit([{ kind: "set", path: [], key: "data", value: { preserved: true } }])
-    log1.compact()
+    applyLocalCheckpoint(log1)
 
     const log2 = createStateSyncLog<any>({
       syncLogDoc: doc,
       clientId: "B",
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     expect(log2.getState()).toStrictEqual({ data: { preserved: true } })
@@ -91,13 +87,11 @@ describe("Sync", () => {
       syncLogDoc: doc,
       clientId: "A",
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
     const log2 = createStateSyncLog<any>({
       syncLogDoc: doc,
       clientId: "B",
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log1.emit([{ kind: "set", path: [], key: "a", value: 1 }])
@@ -116,14 +110,12 @@ describe("Sync", () => {
       syncLogDoc: docA,
       clientId: "A",
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     const logB = createStateSyncLog<any>({
       syncLogDoc: docB,
       clientId: "B",
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     // Step 1: Client A creates multiple ordered txs while offline
@@ -135,12 +127,12 @@ describe("Sync", () => {
     logA.emit([{ kind: "set", path: [], key: "order", value: [1, 2] }])
     logA.emit([{ kind: "set", path: [], key: "order", value: [1, 2, 3] }])
 
-    // Step 2: Client B creates its own tx AND compacts
+    // Step 2: Client B creates its own tx AND creates checkpoint
     // This creates a checkpoint that does NOT include A's txs
     logB.emit([{ kind: "set", path: [], key: "fromB", value: "B was here" }])
-    logB.compact()
+    applyLocalCheckpoint(logB)
 
-    // Verify B has compacted (epoch 1, A's txs not in checkpoint)
+    // Verify B has checkpointed (epoch 1, A's txs not in checkpoint)
     expect(logB.getActiveEpoch()).toBe(1)
 
     // Step 3: Sync B's state (with checkpoint) to A
@@ -176,18 +168,16 @@ describe("Sync", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
       const logB = createStateSyncLog<any>({
         syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       // 1. B creates checkpoint (Epoch 0 -> 1) early, so it misses A's future events.
       logB.emit([{ kind: "set", path: [], key: "setup", value: "init" }])
-      logB.compact()
+      applyLocalCheckpoint(logB)
 
       // Sync B's state (with checkpoint) to A first, so they have same base
       const initSync = docB.encodeStateAsUpdate()
@@ -212,7 +202,6 @@ describe("Sync", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
       logA.emit([{ kind: "set", path: [], key: "arr", value: [] }])
 
@@ -221,7 +210,6 @@ describe("Sync", () => {
         syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       // Sync init state
@@ -231,8 +219,8 @@ describe("Sync", () => {
       // A emits T1 (push 1)
       logA.emit([{ kind: "splice", path: ["arr"], index: 0, deleteCount: 0, inserts: [1] }])
 
-      // B compact (Epoch 0->1). Missed T1.
-      logB.compact()
+      // B creates checkpoint (Epoch 0->1). Missed T1.
+      applyLocalCheckpoint(logB)
 
       // B receives T1.
       // T1 is from A and in a finalized epoch but NOT in B's checkpoint.
@@ -261,13 +249,11 @@ describe("Sync", () => {
         syncLogDoc: doc,
         clientId: "A",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
       const log2 = createStateSyncLog<any>({
         syncLogDoc: doc,
         clientId: "B",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       // Initial state
@@ -294,13 +280,11 @@ describe("Sync", () => {
         syncLogDoc: doc,
         clientId: "A",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
       const log2 = createStateSyncLog<any>({
         syncLogDoc: doc,
         clientId: "B",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       // Initial state
@@ -327,13 +311,11 @@ describe("Sync", () => {
         syncLogDoc: doc,
         clientId: "A",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
       const log2 = createStateSyncLog<any>({
         syncLogDoc: doc,
         clientId: "B",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       // Setup
@@ -364,13 +346,11 @@ describe("Sync", () => {
         syncLogDoc: doc,
         clientId: "A",
         retentionWindowMs: 5000,
-        autoCompact: () => false,
       })
       const log2 = createStateSyncLog<any>({
         syncLogDoc: doc,
         clientId: "B",
         retentionWindowMs: 5000,
-        autoCompact: () => false,
       })
 
       // Setup
@@ -379,8 +359,8 @@ describe("Sync", () => {
       log1.emit([{ kind: "set", path: [], key: "toDelete", value: 2 }])
       log1.emit([{ kind: "delete", path: [], key: "toDelete" }])
 
-      // Compact to create checkpoint
-      log1.compact()
+      // Create checkpoint
+      applyLocalCheckpoint(log1)
 
       // Verify distinction is preserved after checkpoint
       const state1 = log1.getState()
@@ -400,7 +380,6 @@ describe("Sync", () => {
         syncLogDoc: doc1,
         clientId: "A",
         retentionWindowMs: 5000,
-        autoCompact: () => false,
       })
 
       // Create state with set undefined and delete
@@ -409,8 +388,8 @@ describe("Sync", () => {
       log1.emit([{ kind: "set", path: [], key: "c", value: 2 }])
       log1.emit([{ kind: "delete", path: [], key: "c" }])
 
-      // Compact
-      log1.compact()
+      // Create checkpoint
+      applyLocalCheckpoint(log1)
 
       // New client joins
       const doc2 = new SyncLogDoc()
@@ -420,7 +399,6 @@ describe("Sync", () => {
         syncLogDoc: doc2,
         clientId: "B",
         retentionWindowMs: 5000,
-        autoCompact: () => false,
       })
 
       const state2 = log2.getState()

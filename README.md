@@ -93,12 +93,12 @@ log.emit([
 - 🏎️ **Optimistic UI**: Changes apply instantly locally. If they are later rejected (due to a conflict with a remote peer), the state automatically rolls back.
 - 📦 **Plain JSON**: Work with standard JS objects and arrays. No need to learn `ymap.get('foo')` syntax.
 - 🔌 **Network Agnostic**: Works with any transport layer (WebSockets, WebRTC, etc.). Bring your own sync.
-- 💾 **Storage Efficient**: Built-in compaction and retention policies keep your data small and fast.
+- 💾 **Storage Efficient**: Built-in checkpointing and retention policies keep your data small and fast.
 - 🪶 **Minimal CRDT Overhead**: Custom set-once LWW-Map design stays close to raw JSON size.
 
 ### CRDT Size Comparison
 
-After 100 compaction cycles (10,000 total set/delete operations), with only the final checkpoint remaining:
+After 100 checkpoint cycles (10,000 total set/delete operations), with only the final checkpoint remaining:
 
 | Library | Encoded Size | Overhead vs JSON |
 | :--- | ---: | ---: |
@@ -117,6 +117,8 @@ After 100 compaction cycles (10,000 total set/delete operations), with only the 
 - [API Reference](#api-reference)
 - [Operations](#operations)
 - [Generating Operations with createOps](#generating-operations-with-createops)
+- [Integration with MobX, Signals, etc](#integration-with-mobx-signals-etc)
+- [Storage Efficiency (Advanced)](#storage-efficiency-advanced)
 - [Gotchas & Limitations](#gotchas--limitations)
 - [Contributing](#contributing)
 - [License](#license)
@@ -129,63 +131,6 @@ npm install state-sync-log
 pnpm add state-sync-log
 # or
 yarn add state-sync-log
-```
-
-## Storage Efficiency
-
-Since this is an append-only log, you might worry about it growing forever. We solved that.
-
-### 🗜️ Automatic Compaction & Retention
-
-`state-sync-log` can periodically be asked to compact the log into a **snapshot checkpoint**.
-
-- **Checkpoints:** New peers just load the latest snapshot + recent ops. Fast load times!
-- **Retention Window:** Old transaction history is automatically pruned after a set time (recommended: 2 weeks).
-- **Result:** You get a full audit trail for recent history, without unboundedly growing storage.
-
-### Auto-Compaction
-
-By default, `state-sync-log` automatically compacts when:
-- **100+ transactions** OR **1000+ operations** in the current epoch
-- OR **5+ minutes** have passed since the last compaction (if there's something to compact)
-
-This default strategy (`defaultAutoCompact`) works well for most applications. You can customize it:
-
-```ts
-import { createStateSyncLog, SyncLogDoc, AutoCompactParams } from "state-sync-log"
-
-const log = createStateSyncLog<State>({
-  syncLogDoc: new SyncLogDoc(),
-  validate,
-  retentionWindowMs: 14 * 24 * 60 * 60 * 1000,
-
-  // Custom: Compact after 50 txs or 500 ops or 2 minutes
-  autoCompact: ({ txLog, lastCompactionTime }: AutoCompactParams) => {
-    if (txLog.size >= 50 || txLog.ops >= 500) return true
-    if (lastCompactionTime !== undefined && Date.now() - lastCompactionTime >= 2 * 60 * 1000) {
-      return txLog.size > 0
-    }
-    return false
-  }
-})
-```
-
-To disable auto-compaction entirely, pass `autoCompact: () => false`.
-
-**`AutoCompactParams`:**
-
-| Property | Type | Description |
-| --- | --- | --- |
-| `txLog.size` | `number` | Number of transactions in the current epoch (since last checkpoint). |
-| `txLog.ops` | `number` | Total number of operations in the current epoch. |
-| `lastCompactionTime` | `number \| undefined` | Timestamp (Date.now()) of the last checkpoint, or undefined if none exists yet. |
-
-You can also monitor the current epoch's statistics programmatically:
-
-```ts
-const opsInEpoch = log.getActiveEpochOpsCount()
-const txsInEpoch = log.getActiveEpochTxCount()
-const lastCompactionTime = log.getLastCompactionTime()
 ```
 
 ## Integration with MobX, Signals, etc
@@ -201,7 +146,6 @@ import { observable } from "mobx"
 // 1. Create your mutable MobX store (init with current state)
 const store = observable(log.getState())
 
-// 2. Sync it!
 // 2. Sync it!
 log.subscribe((newState, getAppliedOps) => {
   // getAppliedOps is a lazy getter (computing reconciliation diffs only when requested)
@@ -243,7 +187,6 @@ const log = createStateSyncLog<State>({
 | `validate` | `(state: State) => boolean` | Optional gatekeeper function. If it returns `false`, the transaction is dropped. |
 | `clientId` | `string` | Optional unique ID. Auto-generated if omitted. |
 | `retentionWindowMs` | `number` | **Required.** Time to keep transaction history before pruning (recommended: 2 weeks). Helps keep storage small. Use `undefined` to disable pruning. |
-| `autoCompact` | `(params: AutoCompactParams) => boolean` | Callback invoked after each update. If it returns `true`, `compact()` is called automatically. Defaults to `defaultAutoCompact`. Pass `() => false` to disable. See [Auto-Compaction](#auto-compaction). |
 
 ### `StateSyncLogController`
 
@@ -272,9 +215,9 @@ log.subscribe((newState, getAppliedOps) => {
 
 Automatically calculates the operations needed to turn the current state into `targetState` and emits them. Great for "Reset to Default" features.
 
-#### `compact(): void`
+#### `createCheckpoint()` / `addCheckpoint()`
 
-Manually triggers a checkpoint. This compresses the history into a single snapshot to save memory and load time.
+For checkpointing. See [Storage Efficiency (Advanced)](#storage-efficiency-advanced).
 
 #### `dispose(): void`
 
@@ -413,6 +356,110 @@ const { ops } = createOps({ tags: ["a", "b"] }, (draft) => {
   deleteFromSet(draft, ["tags"], "b") // Removes "b"
 })
 // ops: [{ kind: 'addToSet', ... }, { kind: 'deleteFromSet', ... }]
+```
+
+## Storage Efficiency (Advanced)
+
+Since this is an append-only log, you might worry about it growing forever. We solved that.
+
+### 🗜️ Checkpointing & Retention
+
+`state-sync-log` can periodically checkpoint the log into a **snapshot checkpoint**.
+
+- **Checkpoints:** New peers just load the latest snapshot + recent ops. Fast load times!
+- **Retention Window:** Old transaction history is automatically pruned after a set time (recommended: 2 weeks).
+- **Result:** You get a full audit trail for recent history, without unboundedly growing storage.
+
+### Why Coordinated Checkpointing?
+
+When two clients checkpoint independently while offline, data can be lost:
+
+1. Client A creates Checkpoint_A with only A's transactions
+2. Client B creates Checkpoint_B with only B's transactions
+3. On sync, one checkpoint "wins" based on transaction count
+4. The losing client's transactions are lost
+
+**The solution:** Checkpointing must be coordinated so that all clients share the same checkpoint.
+
+> **Note:** It's fine if a checkpoint is created while some clients are offline. When an offline client reconnects and syncs, its changes are automatically rebased on top of the checkpoint. The CRDT layer handles this seamlessly.
+
+### Option 1: Server-Mediated Checkpointing
+
+The server coordinates checkpointing by asking a connected client to create a checkpoint, then broadcasting it to all connected clients.
+
+**Pros:** Server doesn't need to maintain the document state in memory.
+**Cons:** Requires coordination protocol between server and clients.
+
+```ts
+// Server-side (pseudo-code)
+async function handleCheckpointing() {
+  // 1. Pick a connected client to create the checkpoint
+  const client = pickConnectedClient()
+
+  // 2. Ask client to create checkpoint
+  const checkpoint = await client.requestCheckpoint()
+
+  // 3. Broadcast to ALL connected clients
+  for (const c of connectedClients) {
+    c.sendCheckpoint(checkpoint)
+  }
+}
+
+// Client-side
+// On server request:
+const checkpoint = log.createCheckpoint()
+sendToServer(checkpoint)
+
+// On receiving checkpoint from server:
+log.addCheckpoint(checkpoint)
+```
+
+### Option 2: Server as a Client
+
+The server maintains its own `StateSyncLog` instance and performs checkpointing directly.
+
+**Pros:** Simpler implementation—server controls checkpointing timing.
+**Cons:** Server requires RAM/CPU to maintain the document state.
+
+```ts
+// Server-side
+const serverDoc = new SyncLogDoc()
+const serverLog = createStateSyncLog<State>({
+  syncLogDoc: serverDoc,
+  clientId: "server",
+  retentionWindowMs: 14 * 24 * 60 * 60 * 1000,
+})
+
+// Server syncs with clients via serverDoc.encodeStateAsUpdate() / applyUpdate()
+
+// Server triggers checkpointing directly
+function checkpointOnServer() {
+  const checkpoint = serverLog.createCheckpoint()
+  if (checkpoint) {
+    serverLog.addCheckpoint(checkpoint)
+    // Checkpoint is synced to clients via normal CRDT sync
+  }
+}
+```
+
+### Checkpointing API
+
+#### `createCheckpoint(): CheckpointData | null`
+
+Creates a checkpoint without persisting it. Returns `null` if the current epoch has no transactions.
+
+#### `addCheckpoint(checkpoint: CheckpointData): void`
+
+Persists a checkpoint. This prunes covered transactions and advances the epoch.
+
+### Monitoring Statistics
+
+You can monitor the current epoch's statistics to help decide when to trigger checkpointing:
+
+```ts
+const opsInEpoch = log.getActiveEpochOpsCount()
+const txsInEpoch = log.getActiveEpochTxCount()
+const lastCheckpointTime = log.getLastCheckpointTime()
 ```
 
 ## Gotchas & Limitations

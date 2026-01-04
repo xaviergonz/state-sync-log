@@ -1,10 +1,8 @@
-export type { CheckpointKey, CheckpointRecord } from "./checkpoints"
+export type { CheckpointData, CheckpointKey, CheckpointRecord } from "./checkpoints"
 export * from "./crdt"
 export * from "./createOps"
 export {
-  type AutoCompactParams,
   createStateSyncLog,
-  defaultAutoCompact,
   type StateSyncLogController,
   type StateSyncLogOptions,
 } from "./createStateSyncLog"

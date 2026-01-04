@@ -1,4 +1,10 @@
-import { CheckpointRecord, createCheckpoint } from "./checkpoints"
+import {
+  buildCheckpointData,
+  type CheckpointData,
+  type CheckpointRecord,
+  createCheckpointInternal,
+} from "./checkpoints"
+import { getFinalizedEpochAndCheckpoint } from "./checkpointUtils"
 import { createClientState } from "./clientState"
 import { SyncLogDoc } from "./crdt/SyncLogDoc"
 import { SyncLogMapEvent } from "./crdt/SyncLogMap"
@@ -15,51 +21,6 @@ import { TxTimestampKey } from "./txTimestamp"
 import { generateID } from "./utils"
 
 export const getSortedTxsSymbol = Symbol("getSortedTxs")
-
-/**
- * Parameters passed to the autoCompact callback.
- */
-export interface AutoCompactParams {
-  /**
-   * Transaction log statistics for the current epoch.
-   */
-  txLog: {
-    /**
-     * Number of transactions in the current epoch.
-     */
-    size: number
-    /**
-     * Total number of operations across all transactions in the current epoch.
-     */
-    ops: number
-  }
-  /**
-   * Timestamp (Date.now()) of the last checkpoint arrival, or undefined if no checkpoint exists yet.
-   */
-  lastCompactionTime: number | undefined
-}
-
-/**
- * Default auto-compaction strategy.
- * Compacts when:
- * - 100+ transactions OR 1000+ operations in the current epoch
- * - OR 5+ minutes have passed since the last compaction (if there's something to compact)
- */
-export const defaultAutoCompact = ({ txLog, lastCompactionTime }: AutoCompactParams): boolean => {
-  // Compact if log is getting large
-  if (txLog.size >= 100 || txLog.ops >= 1000) return true
-
-  // Compact after 5 minutes if there's something to compact
-  if (
-    txLog.size > 0 &&
-    lastCompactionTime !== undefined &&
-    Date.now() - lastCompactionTime >= 5 * 60 * 1000
-  ) {
-    return true
-  }
-
-  return false
-}
 
 export interface StateSyncLogOptions<State extends JSONObject> {
   /**
@@ -109,28 +70,6 @@ export interface StateSyncLogOptions<State extends JSONObject> {
    * This is emitted with update events and can be used to identify the source of changes.
    */
   origin?: unknown
-
-  /**
-   * Callback to determine if automatic compaction should occur.
-   * Called after each state update when transactions are added.
-   * If it returns true, `compact()` is called automatically.
-   *
-   * By default, uses `defaultAutoCompact` which compacts when:
-   * - 100+ transactions OR 1000+ operations in the current epoch
-   * - OR 5+ minutes have passed since the last compaction
-   *
-   * Pass `() => false` to disable auto-compaction entirely.
-   *
-   * @example
-   * ```ts
-   * // Custom: Compact after 50 transactions or 500 ops or 2 minutes
-   * autoCompact: ({ txLog, lastCompactionTime }) =>
-   *   txLog.size >= 50 ||
-   *   txLog.ops >= 500 ||
-   *   (lastCompactionTime !== undefined && Date.now() - lastCompactionTime >= 2 * 60 * 1000)
-   * ```
-   */
-  autoCompact?: (params: AutoCompactParams) => boolean
 }
 
 export interface StateSyncLogController<State extends JSONObject> {
@@ -155,9 +94,22 @@ export interface StateSyncLogController<State extends JSONObject> {
   reconcileState(targetState: State): void
 
   /**
-   * Manually triggers epoch compaction (Checkpointing).
+   * Creates a checkpoint without persisting it.
+   * Returns the checkpoint data to be sent to the server for distribution,
+   * or null if the current epoch has no transactions to checkpoint.
+   *
+   * The server should broadcast this checkpoint to all connected clients
+   * who will call addCheckpoint() to persist it.
    */
-  compact(): void
+  createCheckpoint(): CheckpointData | null
+
+  /**
+   * Persists a checkpoint received from the server.
+   * This prunes transactions covered by the checkpoint and advances the epoch.
+   *
+   * @param checkpoint - The checkpoint data received from the server
+   */
+  addCheckpoint(checkpoint: CheckpointData): void
 
   /**
    * Cleans up observers and releases memory.
@@ -190,7 +142,7 @@ export interface StateSyncLogController<State extends JSONObject> {
    * Returns the timestamp (Date.now()) of the last checkpoint change, or undefined if no checkpoint exists yet
    * or the log was just initialized.
    */
-  getLastCompactionTime(): number | undefined
+  getLastCheckpointTime(): number | undefined
 
   /**
    * Returns true if the log is completely empty.
@@ -217,7 +169,6 @@ export function createStateSyncLog<State extends JSONObject>(
     validate,
     retentionWindowMs,
     origin,
-    autoCompact = defaultAutoCompact,
   } = options
 
   if (clientId.includes(";")) {
@@ -264,9 +215,6 @@ export function createStateSyncLog<State extends JSONObject>(
   // Track when the last checkpoint arrived (undefined if none yet)
   let lastCheckpointTime: number | undefined
 
-  // Flag to prevent recursive auto-compact
-  let isAutoCompacting = false
-
   // Update Logic with incremental changes
   const runUpdate = (txChanges: TxKeyChanges | undefined, isCheckpointChange: boolean) => {
     const { state, getAppliedOps } = updateState(
@@ -288,32 +236,6 @@ export function createStateSyncLog<State extends JSONObject>(
     }
 
     notifySubscribers(state as State, getAppliedOps)
-
-    // Check if auto-compact should trigger (only when txs are added, not during auto-compact)
-    if (autoCompact && !isAutoCompacting && txChanges && txChanges.added.length > 0) {
-      const activeEpoch = getActiveEpochInternal()
-      const txCount = clientState.stateCalculator.getTxCountForEpoch(activeEpoch)
-
-      if (txCount > 0) {
-        const params: AutoCompactParams = {
-          txLog: {
-            size: txCount,
-            ops: clientState.stateCalculator.getOpsCountForEpoch(activeEpoch),
-          },
-          lastCompactionTime: lastCheckpointTime,
-        }
-
-        if (autoCompact(params)) {
-          // Trigger compact (will emit a checkpoint change)
-          isAutoCompacting = true
-          try {
-            compactInternal()
-          } finally {
-            isAutoCompacting = false
-          }
-        }
-      }
-    }
   }
 
   // Tx observer
@@ -349,14 +271,6 @@ export function createStateSyncLog<State extends JSONObject>(
     return clientState.cachedFinalizedEpoch + 1
   }
 
-  const compactInternal = () => {
-    syncLogDoc.transact(() => {
-      const activeEpoch = getActiveEpochInternal()
-      const currentState = clientState.stateCalculator.getCachedState() ?? {}
-      createCheckpoint(txMap, checkpointMap, clientState, activeEpoch, currentState, clientId)
-    }, origin)
-  }
-
   return {
     getState(): State {
       assertNotDisposed()
@@ -388,9 +302,29 @@ export function createStateSyncLog<State extends JSONObject>(
       }
     },
 
-    compact(): void {
+    createCheckpoint(): CheckpointData | null {
       assertNotDisposed()
-      compactInternal()
+      const activeEpoch = getActiveEpochInternal()
+      const currentState = clientState.stateCalculator.getCachedState() ?? {}
+      const { checkpoint: prevCP } = getFinalizedEpochAndCheckpoint(checkpointMap)
+      return buildCheckpointData(clientState, activeEpoch, currentState, clientId, prevCP)
+    },
+
+    addCheckpoint(checkpoint: CheckpointData): void {
+      assertNotDisposed()
+      syncLogDoc.transact(() => {
+        const activeEpoch = getActiveEpochInternal()
+        const currentState = clientState.stateCalculator.getCachedState() ?? {}
+        createCheckpointInternal(
+          txMap,
+          checkpointMap,
+          clientState,
+          activeEpoch,
+          currentState,
+          clientId,
+          checkpoint
+        )
+      }, origin)
     },
 
     dispose(): void {
@@ -433,7 +367,7 @@ export function createStateSyncLog<State extends JSONObject>(
       return undefined
     },
 
-    getLastCompactionTime(): number | undefined {
+    getLastCheckpointTime(): number | undefined {
       assertNotDisposed()
       return lastCheckpointTime
     },

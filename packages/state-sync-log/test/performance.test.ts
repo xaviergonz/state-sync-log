@@ -2,6 +2,7 @@ import { describe, it } from "vitest"
 import { SyncLogDoc } from "../src/crdt/SyncLogDoc"
 import { createStateSyncLog } from "../src/index"
 import { Op } from "../src/operations"
+import { applyLocalCheckpoint } from "./utils"
 
 describe("Performance", () => {
   // Use 1000 for fast CI. Increase to 10000+ for stress testing.
@@ -12,7 +13,6 @@ describe("Performance", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     // Initialize array
@@ -34,7 +34,7 @@ describe("Performance", () => {
       log.emit(ops)
     }
 
-    reportDocSize(`Uncompacted ${iterations} 10 array pushes`, doc, log.getState())
+    reportDocSize(`Without checkpointing ${iterations} 10 array pushes`, doc, log.getState())
   }, 60000) // 60s timeout
 
   it(`measures performance of ${iterations} 10 random updates on an object with 1000 keys`, () => {
@@ -42,7 +42,6 @@ describe("Performance", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     // Initialize with 1000 keys
@@ -62,7 +61,7 @@ describe("Performance", () => {
     }
 
     reportDocSize(
-      `Uncompacted ${iterations} 10 random updates on an object with 1000 keys`,
+      `Without checkpointing ${iterations} 10 random updates on an object with 1000 keys`,
       doc,
       log.getState()
     )
@@ -79,12 +78,11 @@ describe("Performance", () => {
     return { syncLogSize, jsonSize }
   }
 
-  it(`measures performance of ${iterations} 10 random updates with periodic compaction`, () => {
+  it(`measures performance of ${iterations} 10 random updates with periodic checkpointing`, () => {
     const doc = new SyncLogDoc()
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: 0,
-      autoCompact: () => false,
     })
 
     const initOps = []
@@ -92,7 +90,7 @@ describe("Performance", () => {
       initOps.push({ kind: "set" as const, path: [], key: `key_${i}`, value: i })
     }
     log.emit(initOps)
-    log.compact()
+    applyLocalCheckpoint(log)
 
     for (let i = 0; i < iterations; i++) {
       const ops: Op[] = []
@@ -103,7 +101,7 @@ describe("Performance", () => {
       log.emit(ops)
 
       if ((i + 1) % 100 === 0) {
-        log.compact()
+        applyLocalCheckpoint(log)
       }
     }
 
@@ -112,7 +110,7 @@ describe("Performance", () => {
     )
 
     reportDocSize(
-      `Compacted ${iterations} 10 random updates on an object with 1000 keys`,
+      `With checkpointing ${iterations} 10 random updates on an object with 1000 keys`,
       doc,
       log.getState()
     )

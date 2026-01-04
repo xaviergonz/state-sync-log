@@ -342,6 +342,39 @@ function stateVectorsEqual(a: StateVector, b: StateVector): boolean {
 }
 
 /**
+ * Server-mediated checkpointing: syncs connected clients, creates checkpoint on one, broadcasts to all connected.
+ * Returns true if checkpointing was performed.
+ */
+function applyServerCheckpoint(
+  docs: SyncLogDoc[],
+  logs: StateSyncLogController<JSONObject>[],
+  connected: boolean[],
+  checkpointerIndex: number
+): boolean {
+  // Only checkpoint if checkpointer is connected
+  if (!connected[checkpointerIndex]) return false
+
+  // Sync connected clients first
+  syncConnectedClients(docs, connected)
+
+  // Create checkpoint on checkpointer
+  const checkpoint = logs[checkpointerIndex].createCheckpoint()
+  if (!checkpoint) return false
+
+  // Broadcast to all connected clients
+  for (let i = 0; i < logs.length; i++) {
+    if (connected[i]) {
+      logs[i].addCheckpoint(checkpoint)
+    }
+  }
+
+  // Sync again
+  syncConnectedClients(docs, connected)
+
+  return true
+}
+
+/**
  * Ensures all connected clients have the same state.
  */
 function expectConnectedToSync(logs: StateSyncLogController<JSONObject>[], connected: boolean[]) {
@@ -364,11 +397,11 @@ function expectConnectedToSync(logs: StateSyncLogController<JSONObject>[], conne
 type FuzzyAction =
   | { type: "init"; clientIndex: number; ops: Op[] }
   | { type: "network"; connected: boolean[] }
-  | { type: "compact"; clientIndex: number }
+  | { type: "checkpoint"; clientIndex: number }
   | { type: "emit"; clientIndex: number; op: Op }
 
 describe("Fuzzy Sync", () => {
-  it("three clients with random operations, connectivity, and compaction converge", () => {
+  it("three clients with random operations, connectivity, and checkpointing converge", () => {
     // Standardize logPath to the project package root
     const logPath = process.env.FUZZY_REPLAY_FILE
       ? path.resolve(process.env.FUZZY_REPLAY_FILE)
@@ -384,7 +417,6 @@ describe("Fuzzy Sync", () => {
         syncLogDoc: doc,
         clientId: clientIds[i],
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
     )
 
@@ -413,8 +445,9 @@ describe("Fuzzy Sync", () => {
                 connected[i] = action.connected[i]
               }
               break
-            case "compact":
-              logs[action.clientIndex].compact()
+            case "checkpoint":
+              // Server-mediated: only checkpoint if client is connected
+              applyServerCheckpoint(docs, logs, connected, action.clientIndex)
               break
             case "emit":
               logs[action.clientIndex].emit([action.op])
@@ -428,7 +461,7 @@ describe("Fuzzy Sync", () => {
       } else {
         const OPS_PER_CLIENT = 1000
         const CONNECT_DISCONNECT_RATIO = 100
-        const COMPACT_RATIO = 300
+        const CHECKPOINT_RATIO = 300
 
         // Initialize each client with a more complex base state
         for (let i = 0; i < 3; i++) {
@@ -474,9 +507,12 @@ describe("Fuzzy Sync", () => {
             recordAndSync({ type: "network", connected: [...connected] })
           }
 
-          if (Math.random() < 1 / COMPACT_RATIO) {
-            logs[clientIndex].compact()
-            recordAndSync({ type: "compact", clientIndex })
+          if (Math.random() < 1 / CHECKPOINT_RATIO) {
+            // Server-mediated: only checkpoint if client is connected
+            if (connected[clientIndex]) {
+              applyServerCheckpoint(docs, logs, connected, clientIndex)
+              recordAndSync({ type: "checkpoint", clientIndex })
+            }
           }
 
           const state = logs[clientIndex].getState()

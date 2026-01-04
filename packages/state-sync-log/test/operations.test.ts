@@ -8,7 +8,6 @@ describe("Operations", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "count", value: 1 }])
@@ -21,7 +20,6 @@ describe("Operations", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "user", value: { name: "Alice", age: 30 } }])
@@ -36,7 +34,6 @@ describe("Operations", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "temp", value: "foo" }])
@@ -51,7 +48,6 @@ describe("Operations", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "list", value: [1, 2, 3] }])
@@ -66,7 +62,6 @@ describe("Operations", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "tags", value: [] }])
@@ -90,7 +85,6 @@ describe("Operations", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "arr", value: ["a", "b", "a", "c", "a"] }])
@@ -104,7 +98,6 @@ describe("Operations", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([
@@ -120,7 +113,6 @@ describe("Operations", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "arr", value: [1, 2, 3] }])
@@ -134,7 +126,6 @@ describe("Operations", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "arr", value: [1, 2, 3] }])
@@ -149,7 +140,6 @@ describe("Operations", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "items", value: [] }])
@@ -170,7 +160,6 @@ describe("Operations", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([
@@ -196,7 +185,6 @@ describe("Operations", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([
@@ -213,7 +201,6 @@ describe("Operations", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "arr", value: [1, 2, 3] }])
@@ -228,7 +215,6 @@ describe("Operations", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "arr", value: ["a", "b", "c"] }])

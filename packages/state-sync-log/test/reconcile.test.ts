@@ -9,7 +9,6 @@ describe("Reconcile", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.reconcileState({ a: 1, b: 2 })
@@ -24,7 +23,6 @@ describe("Reconcile", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     const target = {
@@ -61,7 +59,6 @@ describe("Reconcile", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.reconcileState({ arr: [1, 2, 3, 4, 5] })
@@ -76,7 +73,6 @@ describe("Reconcile", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.reconcileState({ arr: [1, 2] })
@@ -91,7 +87,6 @@ describe("Reconcile", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.reconcileState({ num: 1, str: "hello", bool: true, nil: null })
@@ -106,7 +101,6 @@ describe("Reconcile", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.reconcileState({ a: 1, b: 2, c: 3 })
@@ -121,7 +115,6 @@ describe("Reconcile", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
     const spy = vi.fn()
     log.subscribe(spy)
@@ -181,7 +174,6 @@ describe("Reconcile", () => {
       const log = createStateSyncLog<any>({
         syncLogDoc: doc,
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       log.reconcileState({ a: 1, b: 2 })
@@ -198,7 +190,6 @@ describe("Reconcile", () => {
       const log = createStateSyncLog<any>({
         syncLogDoc: doc,
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       log.reconcileState({ a: 1, b: undefined })
@@ -216,7 +207,6 @@ describe("Reconcile", () => {
       const log = createStateSyncLog<any>({
         syncLogDoc: doc,
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       log.reconcileState({ a: 1, b: 2 })
@@ -232,7 +222,6 @@ describe("Reconcile", () => {
       const log = createStateSyncLog<any>({
         syncLogDoc: doc,
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       log.reconcileState({ arr: [1, 2, 3] })
@@ -251,7 +240,6 @@ describe("Reconcile", () => {
       const log = createStateSyncLog<any>({
         syncLogDoc: doc,
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       log.reconcileState({ data: { arr: [1, undefined, 3] } })

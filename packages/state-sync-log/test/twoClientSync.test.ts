@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { SyncLogDoc } from "../src/crdt/SyncLogDoc"
-import { createStateSyncLog, type StateSyncLogController } from "../src/index"
-import type { JSONObject } from "../src/json"
+import { createStateSyncLog } from "../src/index"
+import { applyServerCheckpoint, expectConvergence, syncDocs } from "./utils"
 
 /**
  * Helper to create a two-client test setup with separate SyncLogDoc instances.
@@ -16,43 +16,15 @@ function createTwoClientSetup() {
     syncLogDoc: docA,
     clientId: "A",
     retentionWindowMs: undefined,
-    autoCompact: () => false,
   })
 
   const logB = createStateSyncLog<any>({
     syncLogDoc: docB,
     clientId: "B",
     retentionWindowMs: undefined,
-    autoCompact: () => false,
   })
 
   return { docA, docB, logA, logB }
-}
-
-/**
- * Syncs two SyncLogDoc instances bidirectionally.
- * Simulates a network round-trip where both clients exchange their updates.
- */
-function syncDocs(docA: SyncLogDoc, docB: SyncLogDoc): void {
-  // Get state vectors
-  const stateA = docA.encodeStateAsUpdate()
-  const stateB = docB.encodeStateAsUpdate()
-
-  // Apply updates bidirectionally
-  docB.applyUpdate(stateA)
-  docA.applyUpdate(stateB)
-}
-
-/**
- * Helper to assert that both logs have converged to the same state.
- */
-function expectConvergence(
-  logA: StateSyncLogController<JSONObject>,
-  logB: StateSyncLogController<JSONObject>
-): void {
-  const stateA = logA.getState()
-  const stateB = logB.getState()
-  expect(stateA).toStrictEqual(stateB)
 }
 
 describe("Two Client Sync", () => {
@@ -153,25 +125,21 @@ describe("Two Client Sync", () => {
     }
   })
 
-  it("handles compaction on one client then sync", () => {
+  it("handles checkpointing on one client then sync", () => {
     const { docA, docB, logA, logB } = createTwoClientSetup()
 
-    // A makes changes and compacts
+    // A makes changes
     logA.emit([{ kind: "set", path: [], key: "data", value: { nested: true } }])
-    logA.compact()
 
-    // B has no data yet
-    expect(logB.getState()).toStrictEqual({})
+    // Server-mediated checkpointing (syncs first, then creates checkpoint, then broadcasts)
+    applyServerCheckpoint([docA, docB], [logA, logB], 0)
 
-    // Sync
-    syncDocs(docA, docB)
-
-    // B should now see the compacted state
+    // B should now see the checkpointed state
     expectConvergence(logA, logB)
     expect(logB.getState()).toStrictEqual({ data: { nested: true } })
   })
 
-  it("handles compaction on both clients independently", () => {
+  it("handles checkpointing on both clients via server-mediated pattern", () => {
     const { docA, docB, logA, logB } = createTwoClientSetup()
 
     // Both make changes in isolation
@@ -182,12 +150,8 @@ describe("Two Client Sync", () => {
     syncDocs(docA, docB)
     expectConvergence(logA, logB)
 
-    // Both compact independently
-    logA.compact()
-    logB.compact()
-
-    // Sync again
-    syncDocs(docA, docB)
+    // Server-mediated checkpointing: one client creates checkpoint, broadcasts to all
+    applyServerCheckpoint([docA, docB], [logA, logB], 0)
 
     // Should still work
     expectConvergence(logA, logB)
@@ -346,7 +310,6 @@ describe("Two Client Sync", () => {
       syncLogDoc: docA,
       clientId: "A",
       retentionWindowMs: undefined,
-      autoCompact: () => false,
       validate,
     })
 
@@ -354,7 +317,6 @@ describe("Two Client Sync", () => {
       syncLogDoc: docB,
       clientId: "B",
       retentionWindowMs: undefined,
-      autoCompact: () => false,
       validate,
     })
 
@@ -375,7 +337,7 @@ describe("Two Client Sync", () => {
     expect(logA.getState().count).toBe(10) // Still valid
   })
 
-  it("complete workflow: init, concurrent edits, compact, more edits, sync", () => {
+  it("complete workflow: init, concurrent edits, sync, checkpoint, more edits, sync", () => {
     const { docA, docB, logA, logB } = createTwoClientSetup()
 
     // === Phase 1: Initial sync ===
@@ -390,10 +352,7 @@ describe("Two Client Sync", () => {
     logB.emit([{ kind: "set", path: [], key: "editedByB", value: true }])
     logB.emit([{ kind: "set", path: [], key: "shared", value: "B's version" }])
 
-    // === Phase 3: A compacts while still offline ===
-    logA.compact()
-
-    // === Phase 4: Sync ===
+    // === Phase 3: Sync first (no offline checkpointing - that would cause data loss) ===
     syncDocs(docA, docB)
     expectConvergence(logA, logB)
 
@@ -404,16 +363,18 @@ describe("Two Client Sync", () => {
     expect(state.editedByB).toBe(true)
     expect(["A's version", "B's version"]).toContain(state.shared)
 
+    // === Phase 4: Server-mediated checkpointing after sync ===
+    applyServerCheckpoint([docA, docB], [logA, logB], 0)
+    expectConvergence(logA, logB)
+
     // === Phase 5: More edits after convergence ===
     logB.emit([{ kind: "set", path: [], key: "version", value: 2 }])
     syncDocs(docA, docB)
     expectConvergence(logA, logB)
     expect(logA.getState().version).toBe(2)
 
-    // === Phase 6: Both compact ===
-    logA.compact()
-    logB.compact()
-    syncDocs(docA, docB)
+    // === Phase 6: Server-mediated checkpoint again ===
+    applyServerCheckpoint([docA, docB], [logA, logB], 1)
     expectConvergence(logA, logB)
   })
 })

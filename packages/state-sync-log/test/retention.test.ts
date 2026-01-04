@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { CheckpointRecord, parseCheckpointKey } from "../src/checkpoints"
 import { SyncLogDoc } from "../src/crdt/SyncLogDoc"
 import { createStateSyncLog, getSortedTxsSymbol } from "../src/createStateSyncLog"
+import { applyLocalCheckpoint } from "./utils"
 
 describe("Retention Window", () => {
   const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
@@ -20,7 +21,6 @@ describe("Retention Window", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: TWO_WEEKS_MS,
-      autoCompact: () => false,
     })
 
     // Create tx at time 0
@@ -31,8 +31,8 @@ describe("Retention Window", () => {
     vi.setSystemTime(ONE_WEEK_MS)
     log.emit([{ kind: "set", path: [], key: "later", value: 2 }])
 
-    // Compact
-    log.compact()
+    // Checkpoint
+    applyLocalCheckpoint(log)
 
     // Both txs should be in the state (within retention)
     expect(log.getState()).toStrictEqual({ early: 1, later: 2 })
@@ -48,12 +48,11 @@ describe("Retention Window", () => {
       syncLogDoc: doc,
       clientId: "A",
       retentionWindowMs: ONE_WEEK_MS,
-      autoCompact: () => false,
     })
 
-    // A makes a change and COMPACTS (validating epoch 1, saving watermarks)
+    // A makes a change and creates checkpoint (validating epoch 1, saving watermarks)
     logA.emit([{ kind: "set", path: [], key: "fromA", value: 1 }])
-    logA.compact()
+    applyLocalCheckpoint(logA)
 
     // Advance time beyond retention window
     vi.setSystemTime(ONE_WEEK_MS + 1000)
@@ -63,14 +62,13 @@ describe("Retention Window", () => {
       syncLogDoc: doc,
       clientId: "B",
       retentionWindowMs: ONE_WEEK_MS,
-      autoCompact: () => false,
     })
 
     // B makes a change
     logB.emit([{ kind: "set", path: [], key: "fromB", value: 2 }])
 
-    // B compacts - A's watermark should be pruned from the NEW checkpoint
-    logB.compact()
+    // B creates checkpoint - A's watermark should be pruned from the NEW checkpoint
+    applyLocalCheckpoint(logB)
 
     // State should still contain both values (A is applied from checkpoint state, B is new)
     const state = logB.getState()
@@ -82,9 +80,9 @@ describe("Retention Window", () => {
     const yCheckpoint = doc.getMap<CheckpointRecord>("state-sync-log-checkpoint")
     // Should be at least one checkpoint (latest).
     // The key format is epoch;txCount;clientId
-    // B compacted, so B created a checkpoint for the new epoch (Epoch 2 presumably, or 1 if A made 0 to 1).
-    // Wait, A compacted Epoch 1 (0->1). logA.compact() makes Epoch 1 finalized.
-    // B starts. Active Epoch is 2. B emits. B compacts. Finalizes Epoch 2.
+    // B created checkpoint, so B created a checkpoint for the new epoch (Epoch 2 presumably, or 1 if A made 0 to 1).
+    // Wait, A created checkpoint for Epoch 1 (0->1). logA checkpoint makes Epoch 1 finalized.
+    // B starts. Active Epoch is 2. B emits. B creates checkpoint. Finalizes Epoch 2.
     // Checkpoint for Epoch 2 should NOT have A in watermarks.
 
     // Find checkpoint for epoch 2 (or generally, the latest)
@@ -113,12 +111,11 @@ describe("Retention Window", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: ONE_WEEK_MS,
-      autoCompact: () => false,
     })
 
-    // Create tx and compact
+    // Create tx and checkpoint
     log.emit([{ kind: "set", path: [], key: "old", value: 1 }])
-    log.compact()
+    applyLocalCheckpoint(log)
 
     // Advance time way beyond retention
     vi.setSystemTime(TWO_WEEKS_MS)
@@ -144,7 +141,6 @@ describe("Retention Window", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "ancient", value: 1 }])
@@ -153,7 +149,7 @@ describe("Retention Window", () => {
     vi.setSystemTime(100 * 365 * 24 * 60 * 60 * 1000)
 
     log.emit([{ kind: "set", path: [], key: "future", value: 2 }])
-    log.compact()
+    applyLocalCheckpoint(log)
 
     // Both should be preserved with infinite retention
     expect(log.getState()).toStrictEqual({ ancient: 1, future: 2 })
@@ -169,14 +165,12 @@ describe("Retention Window", () => {
       syncLogDoc: docA,
       clientId: "A",
       retentionWindowMs: ONE_WEEK_MS,
-      autoCompact: () => false,
     })
 
     const logB = createStateSyncLog<any>({
       syncLogDoc: docB,
       clientId: "B",
       retentionWindowMs: ONE_WEEK_MS,
-      autoCompact: () => false,
     })
 
     // A makes changes
@@ -191,9 +185,9 @@ describe("Retention Window", () => {
     // B goes offline for 2 weeks
     vi.setSystemTime(TWO_WEEKS_MS)
 
-    // A continues making changes and compacts
+    // A continues making changes and creates checkpoint
     logA.emit([{ kind: "set", path: [], key: "a2", value: 2 }])
-    logA.compact()
+    applyLocalCheckpoint(logA)
 
     // B comes back online with a very old tx
     logB.emit([{ kind: "set", path: [], key: "bOld", value: "old" }])
@@ -224,7 +218,6 @@ describe("Retention Window", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: SHORT_RETENTION,
-      autoCompact: () => false,
     })
 
     log.emit([{ kind: "set", path: [], key: "t0", value: 0 }])
@@ -235,7 +228,7 @@ describe("Retention Window", () => {
     vi.setSystemTime(1000)
     log.emit([{ kind: "set", path: [], key: "t1000", value: 1000 }])
 
-    log.compact()
+    applyLocalCheckpoint(log)
 
     // All should be in state since they're all within the same epoch
     expect(log.getState()).toStrictEqual({ t0: 0, t500: 500, t1000: 1000 })

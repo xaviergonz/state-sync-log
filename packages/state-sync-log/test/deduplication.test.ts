@@ -1,25 +1,25 @@
 import { describe, expect, it } from "vitest"
 import { SyncLogDoc } from "../src/crdt/SyncLogDoc"
 import { createStateSyncLog, getSortedTxsSymbol } from "../src/createStateSyncLog"
+import { applyLocalCheckpoint } from "./utils"
 
 describe("Deduplication Edge Cases", () => {
   describe("Checkpoint-based pruning", () => {
-    it("txs are pruned after compact", () => {
+    it("txs are pruned after checkpoint", () => {
       const docA = new SyncLogDoc()
       const logA = createStateSyncLog<any>({
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       // A creates a tx
       logA.emit([{ kind: "set", path: [], key: "counter", value: 1 }])
 
-      // A compacts - this creates a checkpoint including the tx
-      logA.compact()
+      // A creates checkpoint - this creates a checkpoint including the tx
+      applyLocalCheckpoint(logA)
 
-      // The tx should be pruned after compact
+      // The tx should be pruned after checkpoint
       const txs = logA[getSortedTxsSymbol]()
       expect(txs.length).toBe(0)
 
@@ -35,18 +35,16 @@ describe("Deduplication Edge Cases", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
       const logB = createStateSyncLog<any>({
         syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
-      // A creates T1 and compacts
+      // A creates T1 and creates checkpoint
       logA.emit([{ kind: "set", path: [], key: "val", value: 1 }])
-      logA.compact()
+      applyLocalCheckpoint(logA)
 
       // Sync A to B (B receives checkpoint)
       docB.applyUpdate(docA.encodeStateAsUpdate())
@@ -68,13 +66,11 @@ describe("Deduplication Edge Cases", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
       const logB = createStateSyncLog<any>({
         syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       // Both start with same base
@@ -84,8 +80,8 @@ describe("Deduplication Edge Cases", () => {
       // A emits a splice (adds element to array)
       logA.emit([{ kind: "splice", path: ["arr"], index: 0, deleteCount: 0, inserts: [1] }])
 
-      // B compacts (misses T1)
-      logB.compact()
+      // B creates checkpoint (misses T1)
+      applyLocalCheckpoint(logB)
 
       // Sync A to B - B receives T1, re-emits it
       docB.applyUpdate(docA.encodeStateAsUpdate())
@@ -107,19 +103,16 @@ describe("Deduplication Edge Cases", () => {
         syncLogDoc: docA,
         clientId: "A",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
       const logB = createStateSyncLog<any>({
         syncLogDoc: docB,
         clientId: "B",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
       const logC = createStateSyncLog<any>({
         syncLogDoc: docC,
         clientId: "C",
         retentionWindowMs: undefined,
-        autoCompact: () => false,
       })
 
       // All start with same base
@@ -130,8 +123,8 @@ describe("Deduplication Edge Cases", () => {
       // A emits T1 (push 1)
       logA.emit([{ kind: "splice", path: ["arr"], index: 0, deleteCount: 0, inserts: [1] }])
 
-      // B compacts (doesn't have T1)
-      logB.compact()
+      // B creates checkpoint (doesn't have T1)
+      applyLocalCheckpoint(logB)
 
       // B receives T1 from A, re-emits as T1'
       docB.applyUpdate(docA.encodeStateAsUpdate())

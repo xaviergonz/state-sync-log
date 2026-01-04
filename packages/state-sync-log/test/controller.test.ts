@@ -8,7 +8,6 @@ describe("Controller API", () => {
     const log = createStateSyncLog({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
     expect(log.getState()).toStrictEqual({})
     expect(log.isLogEmpty()).toBe(true)
@@ -19,7 +18,6 @@ describe("Controller API", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
     const spy = vi.fn()
     log.subscribe(spy)
@@ -37,7 +35,6 @@ describe("Controller API", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
     const spy = vi.fn()
 
@@ -56,7 +53,6 @@ describe("Controller API", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     const spy1 = vi.fn()
@@ -79,7 +75,6 @@ describe("Controller API", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
     const spy = vi.fn()
 
@@ -97,7 +92,8 @@ describe("Controller API", () => {
     expect(() => log.getState()).toThrow(errMsg)
     expect(() => log.emit([{ kind: "set", path: [], key: "b", value: 2 }])).toThrow(errMsg)
     expect(() => log.reconcileState({ x: 1 })).toThrow(errMsg)
-    expect(() => log.compact()).toThrow(errMsg)
+    expect(() => log.createCheckpoint()).toThrow(errMsg)
+    expect(() => log.addCheckpoint({ key: "test", record: {} as any })).toThrow(errMsg)
     expect(() => log.subscribe(() => {})).toThrow(errMsg)
     expect(() => log.getActiveEpoch()).toThrow(errMsg)
     expect(() => log.getActiveEpochTxCount()).toThrow(errMsg)
@@ -111,7 +107,6 @@ describe("Controller API", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     expect(log.getActiveEpochTxCount()).toBe(0)
@@ -125,7 +120,6 @@ describe("Controller API", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     // Before any txs
@@ -133,13 +127,14 @@ describe("Controller API", () => {
 
     log.emit([{ kind: "set", path: [], key: "a", value: 1 }])
 
-    // After emit, before compact - should have timestamp
+    // After emit, before checkpoint - should have timestamp
     expect(log.getActiveEpochStartTime()).toBeDefined()
     expect(typeof log.getActiveEpochStartTime()).toBe("number")
 
-    log.compact()
+    const checkpoint = log.createCheckpoint()
+    if (checkpoint) log.addCheckpoint(checkpoint)
 
-    // After compact - new epoch has no txs
+    // After checkpoint - new epoch has no txs
     expect(log.getActiveEpochStartTime()).toBeUndefined()
   })
 
@@ -148,7 +143,6 @@ describe("Controller API", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
     const spy = vi.fn()
 
@@ -167,13 +161,13 @@ describe("Controller API", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     expect(log.getActiveEpoch()).toBe(0)
 
     log.emit([{ kind: "set", path: [], key: "a", value: 1 }])
-    log.compact()
+    const checkpoint = log.createCheckpoint()
+    if (checkpoint) log.addCheckpoint(checkpoint)
 
     expect(log.getActiveEpoch()).toBe(1)
   })
@@ -183,7 +177,6 @@ describe("Controller API", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     expect(log.isLogEmpty()).toBe(true)
@@ -191,7 +184,8 @@ describe("Controller API", () => {
     log.emit([{ kind: "set", path: [], key: "a", value: 1 }])
     expect(log.isLogEmpty()).toBe(false)
 
-    log.compact()
+    const checkpoint = log.createCheckpoint()
+    if (checkpoint) log.addCheckpoint(checkpoint)
     expect(log.isLogEmpty()).toBe(false) // Checkpoint exists
   })
 
@@ -201,7 +195,6 @@ describe("Controller API", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
       origin: customOrigin,
     })
 
@@ -215,13 +208,12 @@ describe("Controller API", () => {
     expect(receivedOrigin).toBe(customOrigin)
   })
 
-  it("passes origin to onUpdate callback when compact() is called", () => {
+  it("passes origin to onUpdate callback when addCheckpoint() is called", () => {
     const doc = new SyncLogDoc()
     const customOrigin = { source: "test-checkpoint" }
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
       origin: customOrigin,
     })
 
@@ -231,7 +223,8 @@ describe("Controller API", () => {
     log.emit([{ kind: "set", path: [], key: "a", value: 1 }])
     expect(updateSpy).toHaveBeenCalledTimes(1)
 
-    log.compact()
+    const checkpoint = log.createCheckpoint()
+    if (checkpoint) log.addCheckpoint(checkpoint)
     expect(updateSpy).toHaveBeenCalledTimes(2)
     const [_update, receivedOrigin] = updateSpy.mock.lastCall!
     expect(receivedOrigin).toBe(customOrigin)
@@ -242,7 +235,6 @@ describe("Controller API", () => {
     const log = createStateSyncLog<any>({
       syncLogDoc: doc,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
     })
 
     const updateSpy = vi.fn()
@@ -265,13 +257,11 @@ describe("Controller API", () => {
     const logA = createStateSyncLog<any>({
       syncLogDoc: docA,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
       origin: localOriginA,
     })
     const logB = createStateSyncLog<any>({
       syncLogDoc: docB,
       retentionWindowMs: undefined,
-      autoCompact: () => false,
       origin: localOriginB,
     })
 
